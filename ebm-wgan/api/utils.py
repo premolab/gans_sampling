@@ -13,12 +13,12 @@ def prepare_swissroll_data(BATCH_SIZE=1000):
     data /= 7.5 # stdev plus a little
     return data
 
-def prepare_25gaussian_data(BATCH_SIZE=1000):
+def prepare_25gaussian_data(BATCH_SIZE=1000, sigma=0.05):
     dataset = []
     for i in range(BATCH_SIZE//25):
         for x in range(-2, 3):
             for y in range(-2, 3):
-                point = np.random.randn(2)*0.05
+                point = np.random.randn(2)*sigma
                 point[0] += 2*x
                 point[1] += 2*y
                 dataset.append(point)
