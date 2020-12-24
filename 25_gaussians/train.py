@@ -41,8 +41,6 @@ class Evolution(object):
         """
         x_dim = X_gen.shape[-1]
         n_modes = assignment.shape[1]
-        X_gen = X_gen.unsqueeze(1).repeat(1, n_modes, 1)
-
         std = 0
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
@@ -60,10 +58,13 @@ class Evolution(object):
     @staticmethod
     def compute_jsd(assignment):
         n_modes = assignment.shape[1]
-        sample_dist = assignment.sum(dim=0) / float(assignment.shape[0])
-        uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)], device=assignment.device)
+        assign_ = torch.cat([assignment, torch.zeros(assignment.shape[0]).unsqueeze(1)], -1)
+        assign_[:, -1][assignment.sum(1) == 0] = 1
+        sample_dist = assign_.sum(dim=0) / float(assign_.shape[0])
+        sample_dist /= sample_dist.sum()
+        uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)] + [0]).to(assignment.device)
         M = .5 * (uniform_dist + sample_dist)
-        JSD = .5 * (sample_dist * torch.log(sample_dist / M)).sum() + .5 * (uniform_dist * torch.log(uniform_dist / M)).sum()
+        JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)).sum() + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M)).sum()
 
         return JSD
 
@@ -208,7 +209,7 @@ def train_gan(X_train,
                 valid = torch.full((real_data.shape[0], ), 1, dtype=real_data.dtype, device=device)
                 #valid = autograd.Variable(torch.FloatTensor(real_data.shape[0], 1, device=device).fill_(1.0), requires_grad=False)
 
-                g_loss = adversarial_loss(discriminator(fake_data), valid)
+                g_loss = adversarial_loss(discriminator(fake_data)[:, 0], valid)
                 generator_loss_arr.append(g_loss.data.cpu().numpy())
 
                 g_loss.backward()
@@ -219,8 +220,8 @@ def train_gan(X_train,
                 # Measure discriminator's ability to classify real from generated samples
                 fake = torch.full((real_data.shape[0], ), 0, dtype=real_data.dtype, device=device)
 
-                real_loss = adversarial_loss(discriminator(real_data), valid)
-                fake_loss = adversarial_loss(discriminator(fake_data.detach()), fake)
+                real_loss = adversarial_loss(discriminator(real_data)[:, 0], valid)
+                fake_loss = adversarial_loss(discriminator(fake_data.detach())[:, 0], fake)
                 d_loss = (real_loss + fake_loss) / 2
 
                 discriminator_loss_arr.append(d_loss.data.cpu().numpy())
@@ -250,7 +251,7 @@ def train_gan(X_train,
                                    path_to_save_plots,
                                    batch_size_sample)
 
-                cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+                cur_time = f'{epoch}' #datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
 
                 discriminator_model_name = cur_time + '_discriminator.pth'
                 generator_model_name = cur_time + '_generator.pth'
