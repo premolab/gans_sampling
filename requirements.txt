@@ -3,3 +3,5 @@ pyro-ppl
 mlpaper
 numba
 sklearn
+matplotlib
+torchvision
