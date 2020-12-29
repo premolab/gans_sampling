@@ -9,7 +9,7 @@ import itertools
 
 import torch
 
-from mh_sampling import mh_sampling
+from mh_2d_sampling import mh_sampling
 
 def send_file_to_remote(path_to_file,
                         port_to_remote, 
@@ -171,12 +171,17 @@ def mh_sampling_visualize(generator,
                           port_to_remote = None,
                           type_calibrator = 'iso',
                           normalize_to_0_1 = True):
-    X_mh = mh_sampling(X_train, 
+    if scaler is not None:
+       X_train_scale = scaler.transform(X_train)
+    else:
+       X_train_scale = X_train
+    print("Start to do MH sampling....")
+    X_mh = mh_sampling(X_train_scale, 
                        generator, 
                        discriminator, 
                        generator.device, 
                        n_calib_pts, 
-                       batch_size=batch_size_sample,
+                       batch_size_sample=batch_size_sample,
                        normalize_to_0_1=normalize_to_0_1,
                        type_calibrator=type_calibrator)
     mode = 'MHGAN'
@@ -201,7 +206,8 @@ def epoch_visualization(X_train,
                         scaler = None,
                         proj_list = None,
                         n_calib_pts = 10000,
-                        normalize_to_0_1 = True):
+                        normalize_to_0_1 = True,
+                        plot_mhgan = False):
     if path_to_save is not None:
         cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
         plot_name = cur_time + f'_gan_losses_{epoch}_epoch.pdf'
@@ -238,18 +244,20 @@ def epoch_visualization(X_train,
                                            scaler=scaler,
                                            port_to_remote=port_to_remote, 
                                            path_to_save_remote=path_to_save_remote)
-            plot_name = cur_time + f'_{mode}_sampling.pdf'
-            path_to_plot_mhgan = os.path.join(path_to_save, plot_name)
-            mh_sampling_visualize(generator, 
-                                  discriminator,
-                                  X_train, epoch, 
-                                  path_to_plot_mhgan,
-                                  n_calib_pts = n_calib_pts,
-                                  scaler = scaler, 
-                                  batch_size_sample = batch_size_sample,
-                                  port_to_remote=port_to_remote,
-                                  path_to_save_remote = path_to_save_remote,
-                                  normalize_to_0_1 = normalize_to_0_1)
+            if plot_mhgan:
+               mh_mode = 'mhgan'
+               plot_name = cur_time + f'_{mh_mode}_sampling.pdf'
+               path_to_plot_mhgan = os.path.join(path_to_save, plot_name)
+               mh_sampling_visualize(generator, 
+                                     discriminator,
+                                     X_train, epoch, 
+                                     path_to_plot_mhgan,
+                                     n_calib_pts = n_calib_pts,
+                                     scaler = scaler, 
+                                     batch_size_sample = batch_size_sample,
+                                     port_to_remote=port_to_remote,
+                                     path_to_save_remote = path_to_save_remote,
+                                     normalize_to_0_1 = normalize_to_0_1)
 
         if proj_list is None:
             sample_fake_data(generator, X_train, epoch, path_to_save, 

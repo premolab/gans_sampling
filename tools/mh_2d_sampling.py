@@ -8,6 +8,7 @@ import mh
 import classification as cl
 
 from mhgan_utils import discriminator_analysis
+from tqdm import tqdm 
 
 def validate_scores(scores):
     assert isinstance(scores, dict)
@@ -104,7 +105,7 @@ def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
 
 
 def enhance_samples_series(g_d_f, scores_real_df, clf_df,
-                           pickers, n_images=16,
+                           pickers, n_samples=16,
                            batch_size = 16,
                            chain_batches = 10,
                            max_est_batches = 156):
@@ -122,21 +123,21 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     #chain_batches = 10  # Number of batches to use total for the pickers
     #max_est_batches = 156  # Num batches for estimating M in DRS pilot samples
 
-    assert n_images > 0
+    assert n_samples > 0
 
     _, scores_max = batched_gen_and_disc(g_d_f, max_est_batches, batch_size)
     scores_max = scores_max.max(axis=0)
 
-    print('max scores')
-    print(scores_max.to_string())
+    #print('max scores')
+    #print(scores_max.to_string())
 
     X = []
-    picked = [None] * n_images
-    cap_out = [None] * n_images
-    alpha = [None] * n_images
+    picked = [None] * n_samples
+    cap_out = [None] * n_samples
+    alpha = [None] * n_samples
     picked_num = 0
     all_generated_num = 0
-    for nn in range(n_images):
+    for nn in tqdm(range(n_samples)):
         X_, scores_fake_df = \
             batched_gen_and_disc(g_d_f, chain_batches, batch_size)
         #print(f"Shape of generated random images = {X_.shape}")
@@ -166,16 +167,16 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     X = np.asarray(X)
     #assert X.ndim == 4
     picked = pd.concat(picked, axis=1).T
-    assert picked.shape == (n_images, len(picked_))
+    assert picked.shape == (n_samples, len(picked_))
     cap_out = pd.concat(cap_out, axis=1).T
-    assert cap_out.shape == (n_images, len(picked_))
+    assert cap_out.shape == (n_samples, len(picked_))
     alpha = pd.concat(alpha, axis=1).T
-    assert alpha.shape == (n_images, len(picked_))
+    assert alpha.shape == (n_samples, len(picked_))
     return X, picked, cap_out, alpha
 
 @torch.no_grad()
 def mh_sampling(X_train, G, D, device, n_calib_pts, 
-                batch_size,
+                batch_size_sample,
                 normalize_to_0_1=True,
                 type_calibrator='iso'):
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
@@ -187,7 +188,7 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
     if normalize_to_0_1:
        scores_real[BASE_D] = expit(scores_real[BASE_D])
     scores_real_df = validate_scores(scores_real)
-    n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size)
+    n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
 
     n_dim = X_train.shape[1]
 
@@ -203,18 +204,18 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
         x = x.cpu().numpy()
         return x, scores
 
-    _, scores_fake_df = batched_gen_and_disc(gen_disc_f, n_real_batches, batch_size)
+    _, scores_fake_df = batched_gen_and_disc(gen_disc_f, n_real_batches, batch_size_sample)
 
-    outf = 'temp'
-    outf = os.path.abspath(os.path.expanduser(outf))
+    #outf = 'temp'
+    #outf = os.path.abspath(os.path.expanduser(outf))
 
-    print('using dump folder:')
-    print(outf)
+    #print('using dump folder:')
+    #print(outf)
 
-    epoch = 0
+    #epoch = 0
     ref_method = (BASE_D, 'raw')
     incep_ref = BASE_D + '_iso_base'
-    score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
+    #score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
     if type_calibrator=='iso':
         calib_dict = {'iso': cl.Isotonic}
     elif type_calibrator=='raw':
@@ -233,13 +234,15 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
     #                           dump_fname=score_fname)
     pred_df_dump, clf_df = \
         discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
-                                calib_dict=calib_dict,
-                                dump_fname=score_fname)
+                                calib_dict=calib_dict)
 
-    print('image dumps...')
+    #print('image dumps...')
     # Some image dumps in case we want to actually look at generated images
     pickers = {'MH': mh.mh_sample}
-    X, picked, cap_out, alpha = enhance_samples_series(gen_disc_f, scores_real_df, 
-                                                    clf_df, pickers, n_images=batch_size)
+    X, picked, cap_out, alpha = enhance_samples_series(gen_disc_f, 
+                                                       scores_real_df, 
+                                                       clf_df, 
+                                                       pickers, 
+                                                       n_samples=batch_size_sample)
 
     return X

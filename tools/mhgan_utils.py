@@ -74,8 +74,8 @@ def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
     ref_method = cl.flat(ref_method)  # Make it flat as well
 
     # Do calibration analysis
-    Z = cl.calibration_diagnostic(pred_df, y_true)
-    calib_report = Z.to_string()
+    #Z = cl.calibration_diagnostic(pred_df, y_true)
+    #calib_report = Z.to_string()
 
     # Dump prediction to csv in case we want it for later analysis
     if dump_fname is not None:
@@ -104,7 +104,7 @@ def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
     #    print(str(e))
     #    perf_report = perf_df.to_string()
     #return perf_report, calib_report, clf_df
-    return pred_df_dump, clf_df
+    return pred_df, clf_df
 
 def base(score, score_max=None):
     '''This is a normal GAN. It always just selects the first generated image

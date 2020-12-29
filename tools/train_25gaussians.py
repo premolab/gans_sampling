@@ -17,24 +17,48 @@ from torch import autograd
 from paths import (path_to_save_remote, 
                    path_to_save_local,
                    port_to_remote) 
+
+from params_25gaussians import (random_seed,
+                                train_dataset_size,
+                                batch_size,
+                                sigma, 
+                                n_dim,
+                                n_layers_d,
+                                n_layers_g,
+                                n_hid_d,
+                                n_hid_g,
+                                n_out,
+                                normalize_to_0_1,
+                                loss_type,
+                                lr_init,
+                                betas,
+                                use_gradient_penalty,
+                                Lambda,
+                                num_epochs,
+                                num_epoch_for_save,
+                                batch_size_sample,
+                                k_g,
+                                k_d,
+                                mode,
+                                n_calib_pts,
+                                plot_mhgan,
+                                device)
+
 from utils import (prepare_25gaussian_data, 
                    prepare_train_batches,
                    prepare_dataloader, 
                    logging)
+
 from gan_fc_models import (Generator_fc, 
                            Discriminator_fc, 
                            weights_init_1, 
                            weights_init_2)
+
 from gan_train import train_gan
 
-random_seed = 42
 torch.manual_seed(random_seed)
 np.random.seed(random_seed)
 random.seed(random_seed)
-
-train_dataset_size = 64000
-batch_size = 128           
-sigma = 0.05
 
 X_train, means = prepare_25gaussian_data(train_dataset_size,
                                          sigma, 
@@ -44,14 +68,6 @@ X_train_std = scaler.fit_transform(X_train)
 #X_train_batches = prepare_train_batches(X_train, BATCH_SIZE) 
 train_dataloader = prepare_dataloader(X_train_std, batch_size, 
                                       random_seed=random_seed)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-n_dim = 2
-n_layers_d = 4
-n_layers_g = 4
-n_hid_d = 100
-n_hid_g = 100
-n_out = 2
 
 G = Generator_fc(n_dim=n_dim, 
                  n_layers=n_layers_g,
@@ -67,20 +83,14 @@ D = Discriminator_fc(n_in=n_dim,
 G.init_weights(weights_init_2, random_seed=random_seed)
 D.init_weights(weights_init_2, random_seed=random_seed)
 
-#loss_type='Jensen'
-loss_type='Wasserstein'
-lr_init = 1e-4
-d_optimizer = torch.optim.Adam(D.parameters(), betas = (0.5, 0.9), lr = lr_init)
-g_optimizer = torch.optim.Adam(G.parameters(), betas = (0.5, 0.9), lr = lr_init)
-use_gradient_penalty = True
-Lambda = 0.1
-num_epochs = 5000
-num_epoch_for_save = 50
-batch_size_sample = 5000  
-k_g = 1
-k_d = 100
-mode = '25_gaussians'
-n_calib_pts = 10000   
+d_optimizer = torch.optim.Adam(D.parameters(), 
+                               betas = betas, 
+                               lr = lr_init)
+#                               weight_decay = weight_decay)
+g_optimizer = torch.optim.Adam(G.parameters(), 
+                               betas = betas, 
+                               lr = lr_init)
+#                               weight_decay = weight_decay)
 
 cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
 new_dir = os.path.join(path_to_save_local, cur_time)
@@ -115,10 +125,12 @@ train_gan(X_train=X_train,
           k_g=k_g,
           k_d=k_d,
           n_calib_pts=n_calib_pts,
+          normalize_to_0_1=normalize_to_0_1, 
           scaler=scaler,
           mode=mode, 
           path_to_logs=path_to_logs,
           path_to_models=path_to_models,
           path_to_plots=path_to_plots,
           path_to_save_remote=path_to_save_remote,
-          port_to_remote=port_to_remote)
+          port_to_remote=port_to_remote,
+          plot_mhgan = plot_mhgan)

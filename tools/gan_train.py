@@ -37,7 +37,7 @@ def calc_gradient_penalty(D, real_data, fake_data, batch_size, Lambda = 0.1,
     gradient_penalty = ((gradients.norm(2, dim=1) - 1.0) ** 2).mean() * Lambda
     return gradient_penalty
     
-def d_loss(fake, real, loss_type = 'Jensen', criterion=None):
+def d_loss(fake, real, loss_type = 'Jensen_nonsaturing', criterion=None):
     if loss_type == 'Hinge':
         max_module = nn.ReLU()
         return max_module(1.0 - real).mean() + max_module(1.0 + fake).mean()
@@ -45,7 +45,7 @@ def d_loss(fake, real, loss_type = 'Jensen', criterion=None):
     elif loss_type == 'Wasserstein':
         return fake.mean() - real.mean()
 
-    elif (loss_type == 'Jensen') and (criterion is not None):
+    elif (loss_type.split('_')[0] == 'Jensen') and (criterion is not None):
         one_b = torch.ones_like(fake).to(fake.device)
         d_real_loss = criterion(real, one_b)
         d_fake_loss = criterion(fake, 1.-one_b)
@@ -58,20 +58,27 @@ def d_loss(fake, real, loss_type = 'Jensen', criterion=None):
     else:
        raise TypeError('Unknown loss type')
 
-def g_loss(fake, loss_type = 'Jensen', criterion=None):
+def g_loss(fake, loss_type = 'Jensen_nonsaturing', criterion=None):
     if loss_type in ['Hinge', 'Wasserstein']:
        return -fake.mean()
-    elif (loss_type == 'Jensen') and (criterion is not None):
+    elif (loss_type == 'Jensen_minimax') and (criterion is not None):
        #fake_sigmoid = fake.sigmoid()
        #return torch.log(1. - fake_sigmoid).mean()
        zeros = torch.zeros_like(fake).to(fake.device)
        return -criterion(fake, zeros)
+    elif (loss_type == 'Jensen_nonsaturing') and (criterion is not None):
+       #fake_sigmoid = fake.sigmoid()
+       #return torch.log(1. - fake_sigmoid).mean()
+       ones = torch.ones_like(fake).to(fake.device)
+       return criterion(fake, ones)
+    else:
+       raise TypeError('Unknown loss type')
 
 def train_gan(X_train,
               train_dataloader, 
               generator, g_optimizer, 
               discriminator, d_optimizer,
-              loss_type = 'Jensen',
+              loss_type = 'Jensen_nonsaturing',
               batch_size = 256,
               device = device_default,
               use_gradient_penalty = True,
@@ -90,16 +97,18 @@ def train_gan(X_train,
               path_to_plots = None,
               path_to_save_remote = None,
               port_to_remote = None,
-              proj_list = None):
+              proj_list = None,
+              plot_mhgan = False):
 
     generator_loss_arr = []
     generator_mean_loss_arr = []
     discriminator_loss_arr = []
     discriminator_mean_loss_arr = []
-    one = torch.tensor(1, dtype = torch.float).to(device)
- 
-    if loss_type == 'Jensen':
+    #one = torch.tensor(1, dtype = torch.float).to(device)
+    if (loss_type.split('_')[0] == 'Jensen') and (normalize_to_0_1):
        criterion = nn.BCEWithLogitsLoss()
+    elif (loss_type.split('_')[0] == 'Jensen') and (not normalize_to_0_1):
+       criterion = nn.BCELoss()
     else:
        criterion = None
 
@@ -208,7 +217,8 @@ def train_gan(X_train,
                                    port_to_remote=port_to_remote, 
                                    path_to_save_remote=path_to_save_remote,
                                    n_calib_pts=n_calib_pts,
-                                   normalize_to_0_1=normalize_to_0_1)
+                                   normalize_to_0_1=normalize_to_0_1,
+                                   plot_mhgan = plot_mhgan)
                if path_to_models is not None:
                   cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
 
