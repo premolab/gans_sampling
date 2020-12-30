@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import os
 import torch
-from numba import jit
+from numba import jit, njit
+from pathlib import Path
 
 import classification as cl
 import mh
@@ -194,6 +195,40 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     return X, picked, cap_out, alpha
 
 
+def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
+                           calib_dict,
+                           dump_fname=None,
+                           label='label'):
+    '''
+    scores_fake_df : DataFrame, shape (n, n_discriminators)
+    scores_real_df : DataFrame, shape (n, n_discriminators)
+    ref_method : (str, str)
+    perf_report : str
+    calib_report : str
+    clf_df : DataFrame, shape (n_calibrators, n_discriminators)
+    '''
+    # Build combined data set dataframe and train calibrators
+    pred_df, y_true = cl.combine_class_df(neg_class_df=scores_fake_df,
+                                          pos_class_df=scores_real_df)
+    pred_df, y_true, clf_df = cl.calibrate_pred_df(pred_df, y_true, 
+                                                   calibrators=calib_dict)
+    # Make methods flat to be compatible with benchmark tools
+    pred_df.columns = cl.flat_cols(pred_df.columns)
+    ref_method = cl.flat(ref_method)  # Make it flat as well
+
+    # Do calibration analysis
+    Z = cl.calibration_diagnostic(pred_df, y_true)
+    calib_report = Z.to_string()
+
+    # Dump prediction to csv in case we want it for later analysis
+    pred_df_dump = pd.DataFrame(pred_df, copy=True)
+    pred_df_dump[label] = y_true
+    if dump_fname is not None:
+        pred_df_dump.to_csv(dump_fname, header=True, index=False)
+
+    return pred_df_dump, clf_df
+
+
 @torch.no_grad()
 def mh_sample(X_train, G, D, device, n_calib_pts, batch_size):
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
@@ -219,16 +254,16 @@ def mh_sample(X_train, G, D, device, n_calib_pts, batch_size):
 
     _, scores_fake_df = batched_gen_and_disc(gen_disc_f, n_real_batches, batch_size)
 
-    outf = 'temp'
-    outf = os.path.abspath(os.path.expanduser(outf))
+    #outf = 'temp'
+    #outf = os.path.abspath(os.path.expanduser(outf))
 
-    print('using dump folder:')
-    print(outf)
+    # print('using dump folder:')
+    # print(outf)
 
     epoch = 0
     ref_method = (BASE_D, 'raw')
     incep_ref = BASE_D + '_iso_base'
-    score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
+    #score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
     calib_dict = {'iso': cl.Isotonic}
     #perf_report, calib_report, clf_df = \
     #    discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
@@ -236,7 +271,7 @@ def mh_sample(X_train, G, D, device, n_calib_pts, batch_size):
     pred_df_dump, clf_df = \
         discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
                                 calib_dict=calib_dict,
-                                dump_fname=score_fname)
+                                dump_fname=None) #score_fname)
 
     print('image dumps...')
     # Some image dumps in case we want to actually look at generated images
@@ -247,3 +282,37 @@ def mh_sample(X_train, G, D, device, n_calib_pts, batch_size):
     return X
 
 
+def create_samples(checks_path,
+                   X_train,
+                   D,
+                   G,
+                   device,
+                   batch_size=16,
+                   n_calib_pts=1600
+                    ):
+    if Path(checks_path).name == 'models':
+        save_path = Path(Path(checks_path).parent, 'mh_samples.npz')
+    else:
+        save_path = Path(Path(checks_path).parent, 'mh_samples.npz')
+    #save_dir.mkdir(exist_ok=True, parents=False)
+
+    samples = []
+
+    discriminator_regexp = "*_discriminator.pth"
+    generator_regexp = "*_generator.pth"
+    discriminator_name = list(sorted([f for f in Path(checks_path).glob(discriminator_regexp)], key=lambda x: int(re.findall(r'\d+', x.name)[-1])))
+    generator_name = list(sorted([f for f in Path(checks_path).glob(generator_regexp)], key=lambda x: int(re.findall(r'\d+', x.name)[-1])))
+
+    for d_name, g_name in zip(discriminator_name, generator_name):
+        ep = int(re.findall(r'\d+', d_name.name)[-1])
+        print(f'Epoch: {ep}')
+
+        G.load_state_dict(torch.load(g_name, map_location=device))
+        D.load_state_dict(torch.load(d_name, map_location=device))
+        X_gen_mh = mh_sample(X_train, G, D, device, n_calib_pts=n_calib_pts, batch_size=batch_size)
+        samples.append(X_gen_mh)
+
+    samples = np.array(samples)
+    np.savez_compressed(save_path, samples=samples)
+
+    return samples
