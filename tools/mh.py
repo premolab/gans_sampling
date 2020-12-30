@@ -16,6 +16,10 @@ import numpy as np
 from scipy.special import logit
 from scipy.special import expit as logistic
 
+EPS = 1e-14
+
+#ignore warnings for zero-division
+np.seterr(divide='ignore')
 
 def cumargmax(x):
     '''why is this not in numpy? This may not work with nans.
@@ -45,12 +49,12 @@ def binary_posterior(P0, P1):
 
 
 def disc_2_odds_ratio(P_disc):
-    odds_ratio = 1.0 / ((1.0 / P_disc) - 1.0)
+    odds_ratio = 1.0 / ((1.0 / (P_disc + EPS)) - 1.0)
     return odds_ratio
 
 
 def odds_ratio_2_disc(odds_ratio):
-    P_disc = 1.0 / ((1.0 / odds_ratio) + 1.0)
+    P_disc = 1.0 / ((1.0 / (odds_ratio + EPS)) + 1.0)
     return P_disc
 
 
@@ -65,7 +69,7 @@ def accept_prob_MH_disc(P_disc_last, P_disc_new):
     assert np.all(0.0 <= P_disc_last) and np.all(P_disc_last <= 1.0)
     assert np.all(0.0 <= P_disc_new) and np.all(P_disc_new <= 1.0)
 
-    alpha = ((1.0 / P_disc_last) - 1.0) / ((1.0 / P_disc_new) - 1.0)
+    alpha = ((1.0 / (P_disc_last + EPS)) - 1.0) / ((1.0 / (P_disc_new + EPS)) - 1.0)
     # Use fmin so get alpha=1 on nan which results from 0 or 1 P_disc values
     # unclear which is the best value for alpha at the discontinuities.
     alpha = np.fmin(1.0, alpha)
