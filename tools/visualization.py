@@ -122,6 +122,7 @@ def discriminator_2d_visualization(discriminator,
                                    scaler = None,
                                    port_to_remote = None, 
                                    path_to_save_remote = None,
+                                   normalize_to_0_1 = True,
                                    num_points = 700):
     x = torch.linspace(-x_range, x_range, num_points)
     y = torch.linspace(-y_range, y_range, num_points)
@@ -139,7 +140,11 @@ def discriminator_2d_visualization(discriminator,
     discr_batch = discriminator(batch.to(discriminator.device))
     heatmap = discr_batch[:, 0].view((num_points, 
                                       num_points)).detach().cpu()
-    sigmoid_heatmap = heatmap.sigmoid().numpy()
+    if normalize_to_0_1:
+       heatmap = heatmap.sigmoid().numpy()
+    else:
+       heatmap = heatmap.numpy()
+       
     x_numpy = x.numpy()
     y_numpy = y.numpy()
     y, x = np.meshgrid(x_numpy, y_numpy)
@@ -149,7 +154,7 @@ def discriminator_2d_visualization(discriminator,
     r_y=y_numpy.max()
     #small_heatmap = sigmoid_heatmap[:-1, :-1]
     figure, axes = plt.subplots(figsize=(8, 8))
-    z = axes.contourf(x, y, sigmoid_heatmap, 10, cmap='viridis')
+    z = axes.contourf(x, y, heatmap, 10, cmap='viridis')
     title = f"Discriminator heatmap, epoch = {epoch}"
     axes.set_title(title)
     axes.axis([l_x, r_x, l_y, r_y])
@@ -242,6 +247,7 @@ def epoch_visualization(X_train,
                                            path_to_plot_discriminator,
                                            epoch,
                                            scaler=scaler,
+                                           normalize_to_0_1=normalize_to_0_1,
                                            port_to_remote=port_to_remote, 
                                            path_to_save_remote=path_to_save_remote)
             if plot_mhgan:
