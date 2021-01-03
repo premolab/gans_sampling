@@ -70,7 +70,10 @@ def MALA_sampling(generator, discriminator,
 def calculate_energy(params, generator, discriminator):
    if params is not None:
       cur_params = params['points']
-      return -discriminator(generator(cur_params)) + (cur_params @ cur_params)/2
+      GAN_part = -discriminator(generator(cur_params)).view(-1)
+      prior_part = (torch.norm(cur_params, p=2, dim=-1) ** 2)/2
+      result = (GAN_part + prior_part).sum()
+      return result
    else:
       return torch.tensor([0.0])
 
