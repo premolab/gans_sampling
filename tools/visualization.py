@@ -13,6 +13,7 @@ from torch.distributions import Normal
 
 from mh_2d_sampling import mh_sampling
 from ebm_2d_sampling import (langevin_sampling, 
+                             mala_sampling, 
                              calculate_energy)
  
 def send_file_to_remote(path_to_file,
@@ -261,6 +262,36 @@ def langevin_sampling_visualize(generator,
     mode = 'Langevin'
     params = f'lr = {step_lr}, std noise = {eps_std}'
     plot_fake_data_mode(X_langevin, X_train, mode, path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+                        
+def mala_sampling_visualize(generator, 
+                            discriminator,
+                            X_train,  
+                            path_to_save,
+                            alpha = 1.0,
+                            scaler = None, 
+                            batch_size_sample = 5000,
+                            path_to_save_remote = None,
+                            port_to_remote = None,
+                            step_lr = 1e-3,
+                            eps_std = 1e-2,
+                            n_steps = 5000,
+                            n_batches = 1):
+    batchsize = batch_size_sample // n_batches
+    X_mala, zs = mala_sampling(generator, 
+                                   discriminator, 
+                                   alpha, 
+                                   n_steps, 
+                                   step_lr, 
+                                   eps_std, 
+                                   n=batch_size_sample, 
+                                   batchsize=batchsize)
+    mode = 'MALA'
+    params = f'lr = {step_lr}, std noise = {eps_std}'
+    plot_fake_data_mode(X_mala, X_train, mode, path_to_save, 
                         scaler = scaler,
                         path_to_save_remote = path_to_save_remote,
                         port_to_remote = port_to_remote,
