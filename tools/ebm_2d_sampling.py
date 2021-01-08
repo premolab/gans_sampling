@@ -24,11 +24,12 @@ def calculate_energy(params, generator, discriminator, P, normalize_to_0_1):
     prior_part = -torch.sum(P.log_prob(params), dim=1)
     return GAN_part + prior_part
 
-def e_grad(z, P, gen, dis, alpha, ret_e=False):
+def e_grad(z, P, gen, dis, alpha, ret_e=False, e_batch=False):
     logp_z = torch.sum(P.log_prob(z), dim=1)
     x = gen(z)
     d = dis(x).view(-1)
-    E = (-logp_z - alpha * d).sum()
+    E_batch = (-logp_z - alpha * d)
+    E = E_batch.sum()
     # E = - alpha * d
     E.backward()
     grad = z.grad
@@ -36,9 +37,99 @@ def e_grad(z, P, gen, dis, alpha, ret_e=False):
     # d_grad = chainer.grad((d, ), (z, ))
     # import pdb
     # pdb.set_trace()
-    if ret_e:
+    if (ret_e and not e_batch):
         return E, grad
-    return grad
+    elif (ret_e and e_batch):
+        return E_batch, grad
+    else:
+        return grad
+
+def compute_weight(first, second, gen, dis, P, alpha, step_lr, eps_std, clip = 50.0):
+    #print(first.requires_grad)
+    E_first, grad_first = e_grad(first, P, gen, dis, alpha, ret_e=True, e_batch = True)
+        
+    new_first = first - step_lr * grad_first
+    new_first = new_first.data
+    
+    E_second, grad_second = e_grad(second, P, gen, dis, alpha, ret_e=True, e_batch = True)
+        
+    new_second = second - step_lr * grad_second
+    new_second = new_second.data
+    
+    log_energy = E_first - E_second
+    vec_1 = (first - new_second)/eps_std
+    vec_2 = (second - new_first)/eps_std
+    #print(vec_1)
+    #print(vec_2)
+    
+    propose_numerator = P.log_prob(vec_1).sum(dim=1)
+    propose_denumerator = P.log_prob(vec_2).sum(dim=1)
+    #print(propose_numerator)
+    #print(propose_denumerator)
+
+    log_propose_part = propose_numerator - propose_denumerator
+    #print(log_propose_part)
+    
+    log_weight = log_energy + log_propose_part
+    log_weight = torch.clamp(log_weight, -clip, clip)
+    #log_weight = log_weight - torch.max(log_weight, 0)[0]
+
+    weight = torch.exp(log_weight)
+    #weight = weight/torch.sum(weight, 0)
+    weight = weight.detach()
+    
+    return weight, log_weight
+    
+def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
+    y0_arr = [y0.detach().clone()]
+    y1_arr = [y1.detach().clone()]
+    batch_size, z_dim = y0.shape[0], y0.shape[1]
+    loc = torch.zeros(z_dim).to(gen.device)
+    scale = torch.ones(z_dim).to(gen.device)
+    normal = Normal(loc, scale)
+
+    for _ in range(n_steps):
+        #print(f"step = {_}")
+        U = np.random.randint(N)
+        Z0 = y0.unsqueeze(1).repeat(1, N, 1)
+        Z1 = y1.unsqueeze(1).repeat(1, N, 1)
+        noise = normal.sample([batch_size, N])
+        
+        E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
+        g_j = y0 - step_lr * grad_g_j
+        g_j = g_j.data
+        
+        g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
+        Z1 = g_j_N + eps_std*noise
+        Z1[:, U, :] = y1
+        
+        Z0_batch = Z0.view((batch_size*N, z_dim)).detach().clone()
+        Z1_batch = Z1.view((batch_size*N, z_dim)).detach().clone()
+        Z0_batch.requires_grad_(True)
+        Z1_batch.requires_grad_(True)
+        #print(Z0_batch.requires_grad)
+        #print(Z1_batch.requires_grad)
+        
+        weights, log_weight = compute_weight(Z0_batch, Z1_batch, gen, dis, normal, alpha, step_lr, eps_std)
+        weights_view = weights.view((batch_size, N))
+        #print(log_weight)
+        
+        indices = torch.multinomial(weights_view, 1)
+        indices = indices.repeat(1, z_dim).unsqueeze(1)
+        with torch.no_grad():
+            y1 = torch.gather(Z1, 1, indices).squeeze()
+            y1 = y1.data
+            #print(z)
+        y1.requires_grad_(True)
+        y1_arr.append(y1.detach().clone())
+            
+        E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
+        y0 = y1 - step_lr * grad_y1 + eps_std*noise[:, U, :]
+        y0 = y0.data
+        y0.requires_grad_(True)
+        y0_arr.append(y0.detach().clone())
+        
+    return y0_arr, y1_arr
 
 def langevin_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
     z_sp = []
