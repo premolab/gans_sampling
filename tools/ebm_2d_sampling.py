@@ -44,12 +44,12 @@ def e_grad(z, P, gen, dis, alpha, ret_e=False, e_batch=False):
     else:
         return grad
 
-def compute_weight(first, second, gen, dis, P, alpha, step_lr, eps_std, clip = 50.0):
+def compute_log_weight(first, second, gen, dis, P, alpha, step_lr, eps_std, clip = 50.0):
     #print(first.requires_grad)
     E_first, grad_first = e_grad(first, P, gen, dis, alpha, ret_e=True, e_batch = True)
         
     new_first = first - step_lr * grad_first
-    new_first = new_first.data
+    #new_first = new_first.data
     
     E_second, grad_second = e_grad(second, P, gen, dis, alpha, ret_e=True, e_batch = True)
         
@@ -71,14 +71,14 @@ def compute_weight(first, second, gen, dis, P, alpha, step_lr, eps_std, clip = 5
     #print(log_propose_part)
     
     log_weight = log_energy + log_propose_part
-    log_weight = torch.clamp(log_weight, -clip, clip)
+    #log_weight = torch.clamp(log_weight, -clip, clip)
     #log_weight = log_weight - torch.max(log_weight, 0)[0]
 
-    weight = torch.exp(log_weight)
+    #weight = torch.exp(log_weight)
     #weight = weight/torch.sum(weight, 0)
-    weight = weight.detach()
+    log_weight = log_weight.detach()
     
-    return weight, log_weight
+    return log_weight
     
 def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     y0_arr = [y0.detach().clone()]
@@ -110,11 +110,18 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
         #print(Z0_batch.requires_grad)
         #print(Z1_batch.requires_grad)
         
-        weights, log_weight = compute_weight(Z0_batch, Z1_batch, gen, dis, normal, alpha, step_lr, eps_std)
-        weights_view = weights.view((batch_size, N))
+        log_weight = compute_log_weight(Z0_batch, Z1_batch, gen, dis, normal, alpha, step_lr, eps_std)
+        log_weight = log_weight.view((batch_size, N))
         #print(log_weight)
+        max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
+        sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
         
-        indices = torch.multinomial(weights_view, 1)
+        weight = weight/sum_weight
+        #print(weight)
+        
+        indices = torch.multinomial(weight, 1)
         indices = indices.repeat(1, z_dim).unsqueeze(1)
         with torch.no_grad():
             y1 = torch.gather(Z1, 1, indices).squeeze()
