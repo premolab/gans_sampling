@@ -80,6 +80,44 @@ def compute_log_weight(first, second, gen, dis, P, alpha, step_lr, eps_std, clip
     
     return log_weight
     
+def compute_log_weight_2(first, second, gen, dis, P, alpha, step_lr, P_sigma):
+    #print(first.requires_grad)
+    E_first, grad_first = e_grad(first, P, gen, dis, alpha, ret_e=True, e_batch = True)
+        
+    new_first = first - step_lr * grad_first
+    #new_first = new_first.data
+    
+    E_second, grad_second = e_grad(second, P, gen, dis, alpha, ret_e=True, e_batch = True)
+        
+    new_second = second - step_lr * grad_second
+    new_second = new_second.data
+    
+    log_energy = E_first - E_second
+    vec_1 = (first - new_second)
+    vec_2 = (second - new_first)
+    #print(vec_1)
+    #print(vec_2)
+    
+    propose_numerator = P_sigma.log_prob(vec_1).sum(dim=1)
+    propose_denumerator = P_sigma.log_prob(vec_2).sum(dim=1)
+    #print(propose_numerator)
+    #print(propose_denumerator)
+
+    log_propose_part = propose_numerator - propose_denumerator
+    #print(log_propose_part)
+    
+    log_weight = log_energy + log_propose_part
+    #log_weight = torch.clamp(log_weight, -clip, clip)
+    #log_weight = log_weight - torch.max(log_weight, 0)[0]
+
+    #weight = torch.exp(log_weight)
+    #weight = weight/torch.sum(weight, 0)
+    log_weight = log_weight.detach()
+    
+    return log_weight
+    
+
+    
 def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     y0_arr = [y0.detach().clone()]
     y1_arr = [y1.detach().clone()]
@@ -136,6 +174,153 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
         y0.requires_grad_(True)
         y0_arr.append(y0.detach().clone())
         
+    return y0_arr, y1_arr
+    
+def xtry_mala_dynamics_v2(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
+    print(f"y1 = {y1}")
+    print(f"y0 = {y0}")
+    y0_arr = [y0.detach().clone()]
+    y1_arr = [y1.detach().clone()]
+    batch_size, z_dim = y0.shape[0], y0.shape[1]
+    loc = torch.zeros(z_dim).to(gen.device)
+    scale = torch.ones(z_dim).to(gen.device)
+    normal = Normal(loc, scale)
+
+    for _ in tqdm(range(n_steps)):
+        print(f"step = {_}")
+        print(f"y1 = {y1}")
+        print(f"y0 = {y0}")
+        U = np.random.randint(N)
+        print(f"U = {U}")
+        Z0 = y0.unsqueeze(1).repeat(1, N, 1)
+        Z1 = y1.unsqueeze(1).repeat(1, N, 1)
+        noise = normal.sample([batch_size, N])
+        print(f"noise_std = {eps_std*noise}")
+        
+        E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
+        g_j = y0 - step_lr * grad_g_j
+        g_j = g_j.data
+        print(f"g_j = {g_j}")
+        
+        g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
+        Z1 = g_j_N + eps_std*noise
+        Z1[:, U, :] = y1
+        print(f"Z1 = {Z1}")
+        print(f"Z0 = {Z0}")
+        for i in range(batch_size):
+            print(f"num start = {i}")
+            first = Z0[i].data
+            second = Z1[i].data
+            first.requires_grad_(True)
+            second.requires_grad_(True)
+            
+            log_weight = compute_log_weight(first, second, gen, dis, normal, alpha, step_lr, eps_std)
+            max_logs = torch.max(log_weight, dim = 0)[0]
+            log_weight = log_weight - max_logs
+            weight = torch.exp(log_weight)
+            sum_weight = torch.sum(weight, dim = 0)
+
+            weight = weight/sum_weight
+            print(f"weight = {weight}")
+
+            indices = torch.multinomial(weight, 1)
+            print(f"indice = {indices}")
+            y1[i] = Z1[i][indices]
+        
+        with torch.no_grad():
+            y1 = y1.data
+            #print(z)
+        y1.requires_grad_(True)
+        y1_arr.append(y1.detach().clone())
+        print(f"y1 = {y1}")
+            
+        E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
+        add_noise = eps_std*noise[:, U, :]
+        print(f"add noise = {add_noise}")
+        y0 = y1 - step_lr * grad_y1 + add_noise
+        print(f"y0 = {y0}") 
+        y0 = y0.data
+        y0.requires_grad_(True)
+        y0_arr.append(y0.detach().clone())
+        print(f"y0 = {y0}")        
+        print("-----------------------")
+        
+    print(f"y1_arr = {y1_arr}")
+    print(f"y0_arr = {y0_arr}")
+    return y0_arr, y1_arr
+    
+def xtry_mala_dynamics_v3(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
+    print(f"y1 = {y1}")
+    print(f"y0 = {y0}")
+    y0_arr = [y0.detach().clone()]
+    y1_arr = [y1.detach().clone()]
+    batch_size, z_dim = y0.shape[0], y0.shape[1]
+    loc = torch.zeros(z_dim).to(gen.device)
+    scale = torch.ones(z_dim).to(gen.device)
+    normal = Normal(loc, scale)
+    normal_std = Normal(loc, eps_std*scale)
+
+    for _ in tqdm(range(n_steps)):
+        print(f"step = {_}")
+        print(f"y1 = {y1}")
+        print(f"y0 = {y0}")
+        U = np.random.randint(N)
+        print(f"U = {U}")
+        Z0 = y0.unsqueeze(1).repeat(1, N, 1)
+        Z1 = y1.unsqueeze(1).repeat(1, N, 1)
+        noise = normal.sample([batch_size, N])
+        print(f"noise_std = {eps_std*noise}")
+        
+        E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
+        g_j = y0 - step_lr * grad_g_j
+        g_j = g_j.data
+        print(f"g_j = {g_j}")
+        
+        g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
+        Z1 = g_j_N + eps_std*noise
+        Z1[:, U, :] = y1
+        print(f"Z1 = {Z1}")
+        print(f"Z0 = {Z0}")
+        for i in range(batch_size):
+            print(f"num start = {i}")
+            first = Z0[i].data
+            second = Z1[i].data
+            first.requires_grad_(True)
+            second.requires_grad_(True)
+            
+            log_weight = compute_log_weight_2(first, second, gen, dis, normal, alpha, step_lr, normal_std)
+            max_logs = torch.max(log_weight, dim = 0)[0]
+            log_weight = log_weight - max_logs
+            weight = torch.exp(log_weight)
+            sum_weight = torch.sum(weight, dim = 0)
+
+            weight = weight/sum_weight
+            print(f"weight = {weight}")
+
+            indices = torch.multinomial(weight, 1)
+            print(f"indice = {indices}")
+            y1[i] = Z1[i][indices]
+        
+        with torch.no_grad():
+            y1 = y1.data
+            #print(z)
+        y1.requires_grad_(True)
+        y1_arr.append(y1.detach().clone())
+        print(f"y1 = {y1}")
+            
+        E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
+        add_noise = eps_std*noise[:, U, :]
+        print(f"add noise = {add_noise}")
+        y0 = y1 - step_lr * grad_y1 + add_noise
+        print(f"y0 = {y0}") 
+        y0 = y0.data
+        y0.requires_grad_(True)
+        y0_arr.append(y0.detach().clone())
+        print(f"y0 = {y0}")        
+        print("-----------------------")
+        
+    print(f"y1_arr = {y1_arr}")
+    print(f"y0_arr = {y0_arr}")
     return y0_arr, y1_arr
 
 def langevin_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
