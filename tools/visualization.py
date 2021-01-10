@@ -3,14 +3,19 @@ import sklearn.datasets
 import os
 import matplotlib.pyplot as plt
 import datetime
+from functools import partial
 
 import random
 import itertools
 
 import torch
+from torch.distributions import Normal
 
 from mh_2d_sampling import mh_sampling
-
+from ebm_2d_sampling import (langevin_sampling, 
+                             mala_sampling, 
+                             calculate_energy)
+ 
 def send_file_to_remote(path_to_file,
                         port_to_remote, 
                         path_to_save_remote):
@@ -56,7 +61,8 @@ def sample_fake_data(generator, X_train, epoch,
 def plot_fake_data_mode(fake, X_train, mode, path_to_save, 
                         scaler = None,
                         path_to_save_remote = None,
-                        port_to_remote = None):
+                        port_to_remote = None,
+                        params = None):
     #fake_data = fake.data.cpu().numpy()
     if scaler is not None:
        fake = scaler.inverse_transform(fake)
@@ -66,8 +72,11 @@ def plot_fake_data_mode(fake, X_train, mode, path_to_save,
     plt.title(f"Training and {mode} samples", fontsize=20)
     plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
                 marker='o', label = 'training samples')
+    label = f'{mode} samples'
+    if params is not None:
+       label += (', ' + params)
     plt.scatter(fake[:,:1], fake[:,1:], alpha=0.5, color='blue', 
-                marker='o', label = f'{mode} samples')
+                marker='o', label = label)
     plt.legend()
     plt.grid(True)
     if path_to_save is not None:
@@ -165,9 +174,132 @@ def discriminator_2d_visualization(discriminator,
                            port_to_remote, 
                            path_to_save_remote)
 
+def visualize_potential_energy(discriminator,
+                               generator,
+                               x_range,
+                               y_range,
+                               path_to_save = None,
+                               norm_grads = False,
+                               normalize_to_0_1 = True,
+                               num_points = 100):
+    x = torch.linspace(-x_range, x_range, num_points)
+    y = torch.linspace(-y_range, y_range, num_points)
+    x_t = x.view(-1, 1).repeat(1, y.size(0))
+    y_t = y.view(1, -1).repeat(x.size(0), 1)
+    x_t_batch = x_t.view(-1 , 1)
+    y_t_batch = y_t.view(-1 , 1)
+    batch = torch.zeros((x_t_batch.shape[0], 2))
+    batch[:, 0] = x_t_batch[:, 0]
+    batch[:, 1] = y_t_batch[:, 0]
+
+    batch = batch.to(discriminator.device)
+    
+    n_dim = generator.n_dim
+    loc = torch.zeros(n_dim).to(generator.device)
+    scale = torch.ones(n_dim).to(generator.device)
+    normal = Normal(loc, scale)
+
+    fun_energy = partial(calculate_energy, 
+                         generator = generator, 
+                         discriminator = discriminator, 
+                         P = normal,
+                         normalize_to_0_1 = normalize_to_0_1)
+    if norm_grads:
+        batch.requires_grad_(True)
+        batch_energy = fun_energy(params = batch).sum() 
+        batch_energy.backward()
+        batch_grads = batch.grad.detach().cpu()
+        batch_grads_norm = torch.norm(batch_grads, p=2, dim=-1)
+        result = batch_grads_norm.view((num_points, 
+                                        num_points)).detach().cpu().numpy()
+        title = f"Latent energy norm gradients"
+    else:
+        batch_energy = fun_energy(params = batch)
+        result = batch_energy.view((num_points, 
+                                    num_points)).detach().cpu().numpy()
+        title = "Latent energy"
+    
+    x_numpy = x.numpy()
+    y_numpy = y.numpy()
+    y, x = np.meshgrid(x_numpy, y_numpy)
+    l_x=x_numpy.min()
+    r_x=x_numpy.max()
+    l_y=y_numpy.min()
+    r_y=y_numpy.max()
+    #small_heatmap = sigmoid_heatmap[:-1, :-1]
+    figure, axes = plt.subplots(figsize=(8, 8))
+    z = axes.contourf(x, y, result, 10, cmap='viridis')
+    axes.set_title(title)
+    axes.axis([l_x, r_x, l_y, r_y])
+    figure.colorbar(z)
+    if path_to_save is not None:
+        plt.savefig(path_to_save)
+    else:
+        plt.show()
+
+def langevin_sampling_visualize(generator, 
+                                discriminator,
+                                X_train,  
+                                path_to_save,
+                                alpha = 1.0,
+                                scaler = None, 
+                                batch_size_sample = 5000,
+                                path_to_save_remote = None,
+                                port_to_remote = None,
+                                step_lr = 1e-3,
+                                eps_std = 1e-2,
+                                n_steps = 5000,
+                                n_batches = 1):
+    batchsize = batch_size_sample // n_batches
+    X_langevin, zs = langevin_sampling(generator, 
+                                       discriminator, 
+                                       alpha, 
+                                       n_steps, 
+                                       step_lr, 
+                                       eps_std, 
+                                       n=batch_size_sample, 
+                                       batchsize=batchsize)
+    mode = 'Langevin'
+    params = f'lr = {step_lr}, std noise = {eps_std}'
+    plot_fake_data_mode(X_langevin, X_train, mode, path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+                        
+def mala_sampling_visualize(generator, 
+                            discriminator,
+                            X_train,  
+                            path_to_save,
+                            alpha = 1.0,
+                            scaler = None, 
+                            batch_size_sample = 5000,
+                            path_to_save_remote = None,
+                            port_to_remote = None,
+                            step_lr = 1e-3,
+                            eps_std = 1e-2,
+                            n_steps = 5000,
+                            n_batches = 1):
+    batchsize = batch_size_sample // n_batches
+    X_mala, zs = mala_sampling(generator, 
+                                   discriminator, 
+                                   alpha, 
+                                   n_steps, 
+                                   step_lr, 
+                                   eps_std, 
+                                   n=batch_size_sample, 
+                                   batchsize=batchsize)
+    mode = 'MALA'
+    params = f'lr = {step_lr}, std noise = {eps_std}'
+    plot_fake_data_mode(X_mala, X_train, mode, path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+
 def mh_sampling_visualize(generator, 
                           discriminator,
-                          X_train, epoch, 
+                          X_train, 
                           path_to_save,
                           n_calib_pts = 10000,
                           scaler = None, 
@@ -190,10 +322,12 @@ def mh_sampling_visualize(generator,
                        normalize_to_0_1=normalize_to_0_1,
                        type_calibrator=type_calibrator)
     mode = 'MHGAN'
+    params = f'calibrator = {type_calibrator}'
     plot_fake_data_mode(X_mh, X_train, mode, path_to_save, 
                         scaler = scaler,
                         path_to_save_remote = path_to_save_remote,
-                        port_to_remote = port_to_remote)
+                        port_to_remote = port_to_remote,
+                        params = params)
 
 def epoch_visualization(X_train, 
                         generator, 
