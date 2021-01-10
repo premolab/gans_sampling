@@ -186,8 +186,6 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     return y0_arr, y1_arr
     
 def xtry_mala_dynamics_v2(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
-    print(f"y1 = {y1}")
-    print(f"y0 = {y0}")
     y0_arr = [y0.detach().clone()]
     y1_arr = [y1.detach().clone()]
     batch_size, z_dim = y0.shape[0], y0.shape[1]
@@ -196,28 +194,40 @@ def xtry_mala_dynamics_v2(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N)
     normal = Normal(loc, scale)
 
     for _ in tqdm(range(n_steps)):
-        print(f"step = {_}")
-        print(f"y1 = {y1}")
-        print(f"y0 = {y0}")
-        U = np.random.randint(N)
-        print(f"U = {U}")
+        #print(f"step = {_}")
+        U_1d = torch.randint(high = N, size = (batch_size,)).to(gen.device)
+        U_2d = U_1d.unsqueeze(-1)
+        U = U_2d.repeat(1, z_dim).unsqueeze(1)
+        #print(U.shape)
+                          
         Z0 = y0.unsqueeze(1).repeat(1, N, 1)
-        Z1 = y1.unsqueeze(1).repeat(1, N, 1)
+        #Z1 = y1.unsqueeze(1).repeat(1, N, 1)
         noise = normal.sample([batch_size, N])
-        print(f"noise_std = {eps_std*noise}")
         
         E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
         g_j = y0 - step_lr * grad_g_j
         g_j = g_j.data
-        print(f"g_j = {g_j}")
         
         g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
         Z1 = g_j_N + eps_std*noise
-        Z1[:, U, :] = y1
-        print(f"Z1 = {Z1}")
-        print(f"Z0 = {Z0}")
+        #Z1.scatter_(1, U) = y1
+        #y1_big = y1.unsqueeze(1).repeat(1, N, 1)
+        #U_scatter = U.repeat(1, N, 1)
+        #Z1.scatter_(dim = 1, index = U_scatter, src = y1_big)
         for i in range(batch_size):
-            print(f"num start = {i}")
+            Z1[i][U_1d[i]] = y1[i]
+        
+        #Z0_batch = Z0.view((batch_size*N, z_dim)).detach().clone()
+        #Z1_batch = Z1.view((batch_size*N, z_dim)).detach().clone()
+        #Z0_batch.requires_grad_(True)
+        #Z1_batch.requires_grad_(True)
+        #print(Z0_batch.requires_grad)
+        #print(Z1_batch.requires_grad)
+        Z1 = Z1.detach()
+        Z0 = Z0.detach()
+        
+        for i in range(batch_size):
+            #print(f"num start = {i}")
             first = Z0[i].data
             second = Z1[i].data
             first.requires_grad_(True)
@@ -230,32 +240,27 @@ def xtry_mala_dynamics_v2(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N)
             sum_weight = torch.sum(weight, dim = 0)
 
             weight = weight/sum_weight
-            print(f"weight = {weight}")
+            #print(f"weight = {weight}")
 
             indices = torch.multinomial(weight, 1)
-            print(f"indice = {indices}")
-            y1[i] = Z1[i][indices]
-        
-        with torch.no_grad():
-            y1 = y1.data
-            #print(z)
-        y1.requires_grad_(True)
+            #print(f"indice = {indices}")
+            with torch.no_grad():
+                y1[i] = Z1[i][indices]
+
+        y1.requires_grad_(True)    
         y1_arr.append(y1.detach().clone())
-        print(f"y1 = {y1}")
             
         E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
-        add_noise = eps_std*noise[:, U, :]
-        print(f"add noise = {add_noise}")
-        y0 = y1 - step_lr * grad_y1 + add_noise
-        print(f"y0 = {y0}") 
+        #noise_U = torch.gather(noise, 1, U).squeeze()   
+        noise_U = torch.zeros_like(y1)
+        for i in range(batch_size):
+            noise_U[i] = noise[i][U_1d[i]]
+                          
+        y0 = y1 - step_lr * grad_y1 + eps_std*noise_U
         y0 = y0.data
         y0.requires_grad_(True)
         y0_arr.append(y0.detach().clone())
-        print(f"y0 = {y0}")        
-        print("-----------------------")
         
-    print(f"y1_arr = {y1_arr}")
-    print(f"y0_arr = {y0_arr}")
     return y0_arr, y1_arr
     
 def xtry_mala_dynamics_v3(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
