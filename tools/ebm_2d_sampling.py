@@ -116,7 +116,6 @@ def compute_log_weight_2(first, second, gen, dis, P, alpha, step_lr, P_sigma):
     
     return log_weight
     
-
     
 def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     y0_arr = [y0.detach().clone()]
@@ -126,11 +125,14 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     scale = torch.ones(z_dim).to(gen.device)
     normal = Normal(loc, scale)
 
-    for _ in range(n_steps):
+    for _ in tqdm(range(n_steps)):
         #print(f"step = {_}")
-        U = np.random.randint(N)
+        U = torch.randint(high = N, size = (batch_size,)).unsqueeze(-1)
+        U = U.repeat(1, z_dim).unsqueeze(1).to(gen.device)
+        #print(U.shape)
+                          
         Z0 = y0.unsqueeze(1).repeat(1, N, 1)
-        Z1 = y1.unsqueeze(1).repeat(1, N, 1)
+        #Z1 = y1.unsqueeze(1).repeat(1, N, 1)
         noise = normal.sample([batch_size, N])
         
         E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
@@ -139,7 +141,12 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
         
         g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
         Z1 = g_j_N + eps_std*noise
-        Z1[:, U, :] = y1
+        #Z1.scatter_(1, U) = y1
+        #y1_big = y1.unsqueeze(1).repeat(1, N, 1)
+        #U_scatter = U.repeat(1, N, 1)
+        #Z1.scatter_(dim = 1, index = U_scatter, src = y1_big)
+        #for i in range(batch_size):
+        #    Z1[i][U[i]] = y1[i]
         
         Z0_batch = Z0.view((batch_size*N, z_dim)).detach().clone()
         Z1_batch = Z1.view((batch_size*N, z_dim)).detach().clone()
@@ -169,7 +176,9 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
         y1_arr.append(y1.detach().clone())
             
         E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
-        y0 = y1 - step_lr * grad_y1 + eps_std*noise[:, U, :]
+        noise_U = torch.gather(noise, 1, U).squeeze()                  
+                          
+        y0 = y1 - step_lr * grad_y1 + eps_std*noise_U
         y0 = y0.data
         y0.requires_grad_(True)
         y0_arr.append(y0.detach().clone())
