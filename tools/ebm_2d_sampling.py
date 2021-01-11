@@ -357,8 +357,15 @@ def langevin_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize):
     ims = np.asarray(ims).reshape(-1, z.shape[-1])
     zs = np.stack(zs, axis=0)
     return ims, zs
+
+def barker_acceptance_prob(pi_x, pi_y, q_xy, q_yx):
+    return pi_y*q_yx / (pi_y*q_yx + pi_x*q_xy)
+
+def hastings_acceptance_prob(pi_x, pi_y, q_xy, q_yx):
+    return NotImplementedError
+
     
-def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
+def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std, acceptance_rule='hastings'):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     loc = torch.zeros(z_dim).to(gen.device)
@@ -389,11 +396,18 @@ def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
         
         propose_part = torch.sum(propose_part_2 - propose_part_1, dim=1)
 
-        log_accept_prob = propose_part + energy_part
+        if acceptance_rule == 'hastings':
+            log_accept_prob = torch.clamp(propose_part + energy_part, -float('inf'), 0)
+
+        elif acceptance_rule == 'barker':
+            ratio = propose_part + energy_part
+            log_accept_prob = -torch.log(1 + torch.exp(-1*log_accept_prob))
+            #log_accept_prob = torch.log(accept_prob)
+
         generate_uniform_var = uniform.sample([batch_size]).to(gen.device)
         log_generate_uniform_var = torch.log(generate_uniform_var)
-
         mask = log_generate_uniform_var < log_accept_prob
+        
         acceptence += mask
         #print(mask)
         #print(z)
@@ -407,13 +421,13 @@ def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
         
     return z_sp, acceptence
     
-def mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize):
+def mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize, acceptance_rule='hastings'):
     ims = []
     zs = []
     for i in tqdm(range(0, n, batchsize)):
         z = gen.make_hidden(batchsize)
         z.requires_grad_(True)
-        z_sp, acceptence = mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std)
+        z_sp, acceptence = mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std, acceptance_rule=acceptance_rule)
         last_z_sp = z_sp[-1].to(gen.device)
         x = gen(last_z_sp).data.cpu().numpy()
         ims.append(x)
