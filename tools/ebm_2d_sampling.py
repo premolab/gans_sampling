@@ -63,11 +63,11 @@ def compute_log_weight(first, second, gen, dis, P, alpha, step_lr, eps_std, clip
     #print(vec_2)
     
     propose_numerator = P.log_prob(vec_1).sum(dim=1)
-    propose_denumerator = P.log_prob(vec_2).sum(dim=1)
+    propose_denomerator = P.log_prob(vec_2).sum(dim=1)
     #print(propose_numerator)
-    #print(propose_denumerator)
+    #print(propose_denomerator)
 
-    log_propose_part = propose_numerator - propose_denumerator
+    log_propose_part = propose_numerator - propose_denomerator
     #print(log_propose_part)
     
     log_weight = log_energy + log_propose_part
@@ -99,11 +99,11 @@ def compute_log_weight_2(first, second, gen, dis, P, alpha, step_lr, P_sigma):
     #print(vec_2)
     
     propose_numerator = P_sigma.log_prob(vec_1).sum(dim=1)
-    propose_denumerator = P_sigma.log_prob(vec_2).sum(dim=1)
+    propose_denomerator = P_sigma.log_prob(vec_2).sum(dim=1)
     #print(propose_numerator)
-    #print(propose_denumerator)
+    #print(propose_denomerator)
 
-    log_propose_part = propose_numerator - propose_denumerator
+    log_propose_part = propose_numerator - propose_denomerator
     #print(log_propose_part)
     
     log_weight = log_energy + log_propose_part
@@ -120,6 +120,7 @@ def compute_log_weight_2(first, second, gen, dis, P, alpha, step_lr, P_sigma):
 def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     y0_arr = [y0.detach().clone()]
     y1_arr = [y1.detach().clone()]
+    weights_arr = []
     batch_size, z_dim = y0.shape[0], y0.shape[1]
     loc = torch.zeros(z_dim).to(gen.device)
     scale = torch.ones(z_dim).to(gen.device)
@@ -127,13 +128,14 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
 
     for _ in tqdm(range(n_steps)):
         #print(f"step = {_}")
-        U = torch.randint(high = N, size = (batch_size,)).unsqueeze(-1)
-        U = U.repeat(1, z_dim).unsqueeze(1).to(gen.device)
-        #print(U.shape)
+        U = torch.randint(high = N, size = (batch_size,)).tolist()
+        #print(f"U = {U}")
+        #print(f"y1 = {y1}")
+        #print(f"y0 = {y0}")
                           
         Z0 = y0.unsqueeze(1).repeat(1, N, 1)
-        #Z1 = y1.unsqueeze(1).repeat(1, N, 1)
         noise = normal.sample([batch_size, N])
+        #print(f"noise = {noise}")
         
         E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
         g_j = y0 - step_lr * grad_g_j
@@ -141,49 +143,53 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
         
         g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
         Z1 = g_j_N + eps_std*noise
-        #Z1.scatter_(1, U) = y1
-        #y1_big = y1.unsqueeze(1).repeat(1, N, 1)
-        #U_scatter = U.repeat(1, N, 1)
-        #Z1.scatter_(dim = 1, index = U_scatter, src = y1_big)
-        #for i in range(batch_size):
-        #    Z1[i][U[i]] = y1[i]
+        #print(f"Z1 = {Z1}")
+        #print(f"Z0 = {Z0}")
+        Z1[np.arange(batch_size), U, :] = y1
+        #Z1[np.arange(batch_size), U, :] = y0
+        #print(f"Z1 = {Z1}")
         
         Z0_batch = Z0.view((batch_size*N, z_dim)).detach().clone()
         Z1_batch = Z1.view((batch_size*N, z_dim)).detach().clone()
         Z0_batch.requires_grad_(True)
         Z1_batch.requires_grad_(True)
-        #print(Z0_batch.requires_grad)
-        #print(Z1_batch.requires_grad)
         
         log_weight = compute_log_weight(Z0_batch, Z1_batch, gen, dis, normal, alpha, step_lr, eps_std)
         log_weight = log_weight.view((batch_size, N))
-        #print(log_weight)
         max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
         log_weight = log_weight - max_logs
         weight = torch.exp(log_weight)
         sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
         
         weight = weight/sum_weight
-        #print(weight)
+        weights_arr.append(weight.detach().clone())
+        #print(f"weight = {weight}")
         
         indices = torch.multinomial(weight, 1)
-        indices = indices.repeat(1, z_dim).unsqueeze(1)
-        with torch.no_grad():
-            y1 = torch.gather(Z1, 1, indices).squeeze()
-            y1 = y1.data
-            #print(z)
+        indices_squeeze = indices.squeeze().tolist()
+        #print(f"indices = {indices_squeeze}")
+        #indices = indices.repeat(1, z_dim).unsqueeze(1)
+        #with torch.no_grad():
+        #    y1 = torch.gather(Z1, 1, indices).squeeze()
+        #    y1 = y1.data
+        #y1.requires_grad_(True)
+        y1 = Z1[np.arange(batch_size), indices_squeeze, :]
+        y1 = y1.data
         y1.requires_grad_(True)
         y1_arr.append(y1.detach().clone())
+        #print(f"y1 = {y1}")
             
         E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
-        noise_U = torch.gather(noise, 1, U).squeeze()                  
-                          
+        
+        noise_U = noise[np.arange(batch_size), U, :]
+        #print(f"noise U = {noise_U}")
         y0 = y1 - step_lr * grad_y1 + eps_std*noise_U
         y0 = y0.data
         y0.requires_grad_(True)
         y0_arr.append(y0.detach().clone())
+        #print("------------------------")
         
-    return y0_arr, y1_arr
+    return y0_arr, y1_arr, weights_arr
     
 def xtry_mala_dynamics_v2(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
     y0_arr = [y0.detach().clone()]
@@ -380,7 +386,7 @@ def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
     
     normal = Normal(loc, scale)
     uniform = Uniform(low = 0.0, high = 1.0)
-    acceptence = torch.zeros(batch_size).to(gen.device)
+    acceptance = torch.zeros(batch_size).to(gen.device)
 
     for _ in range(n_steps):
         noise = normal.sample([batch_size])
@@ -419,7 +425,7 @@ def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
             z.requires_grad_(True)
             z_sp.append(z.clone().detach())
         
-    return z_sp, acceptence
+    return z_sp, acceptance
     
 def mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize):
     ims = []
@@ -427,7 +433,7 @@ def mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize):
     for i in tqdm(range(0, n, batchsize)):
         z = gen.make_hidden(batchsize)
         z.requires_grad_(True)
-        z_sp, acceptence = mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std)
+        z_sp, acceptance = mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std)
         last_z_sp = z_sp[-1].to(gen.device)
         x = gen(last_z_sp).data.cpu().numpy()
         ims.append(x)
