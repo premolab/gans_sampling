@@ -6,6 +6,10 @@ from torch.distributions import (MultivariateNormal,
                                  Independent, 
                                  Uniform)
 
+import pdb
+import torchvision
+from scipy.stats import gamma, invgamma
+
 import pyro
 from pyro.infer import MCMC, NUTS, HMC
 
@@ -345,3 +349,227 @@ def xtry_mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, N, n, batchsi
     ims = np.asarray(ims).reshape(-1, y0.shape[-1])
     zs = np.stack(zs, axis=0)
     return ims, zs
+
+torchType = torch.float32
+class Target(nn.Module):
+    """
+    Base class for a custom target distribution
+    """
+
+    def __init__(self, kwargs):
+        super().__init__()
+        self.device = kwargs.device
+        self.torchType = torchType
+        self.device_zero = torch.tensor(0., dtype=self.torchType, device=self.device)
+        self.device_one = torch.tensor(1., dtype=self.torchType, device=self.device)
+
+    def prob(self, x):
+        """
+        The method returns target density, estimated at point x
+        Input:
+        x - datapoint
+        Output:
+        density - p(x)
+        """
+        # You should define the class for your custom distribution
+        raise NotImplementedError
+
+    def log_prob(self, x):
+        """
+        The method returns target logdensity, estimated at point x
+        Input:
+        x - datapoint
+        Output:
+        log_density - log p(x)
+        """
+        # You should define the class for your custom distribution
+        raise NotImplementedError
+
+    def sample(self, n):
+        """
+        The method returns samples from the distribution
+        Input:
+        n - amount of samples
+        Output:
+        samples - samples from the distribution
+        """
+        # You should define the class for your custom distribution
+        raise NotImplementedError
+
+
+
+class Gaussian_mixture(Target):
+    """
+    Mixture of n gaussians (multivariate)
+    """
+
+    def __init__(self, kwargs):
+        super().__init__(kwargs)
+        self.device = kwargs.device
+        self.torchType = torchType
+        self.num = kwargs['num_gauss']
+        self.pis = kwargs['p_gaussians']
+        self.locs = kwargs['locs']  # list of locations for each of these gaussians
+        self.covs = kwargs['covs']  # list of covariance matrices for each of these gaussians
+        self.peak = [None] * self.num
+        for i in range(self.num):
+            self.peak[i] = torch.distributions.MultivariateNormal(loc=self.locs[i], covariance_matrix=self.covs[i])
+
+    def get_density(self, x):
+        """
+        The method returns target density
+        Input:
+        x - datapoint
+        z - latent vaiable
+        Output:
+        density - p(x)
+        """
+        density = self.log_prob(x).exp()
+        return density
+
+    def log_prob(self, z, x=None):
+        """
+        The method returns target logdensity
+        Input:
+        x - datapoint
+        z - latent variable
+        Output:
+        log_density - log p(x)
+        """
+        log_p = torch.tensor([], device=self.device)
+        #pdb.set_trace()
+        for i in range(self.num):
+            log_paux = (torch.log(self.pis[i]) + self.peak[i].log_prob(z)).view(-1, 1)
+            log_p = torch.cat([log_p, log_paux], dim=-1)
+        log_density = torch.logsumexp(log_p, dim=1)  # + torch.tensor(1337., device=self.device)
+        return log_density
+
+class DotDict(dict):
+    """
+    a dictionary that supports dot notation
+    as well as dictionary access notation
+    usage: d = DotDict() or d = DotDict({'val1':'first'})
+    set attributes: d.val2 = 'second' or d['val2'] = 'second'
+    get attributes: d.val2 or d['val2']
+    """
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+def get_grad(q, target, x=None):
+    q = q.detach().requires_grad_()
+    if x is not None:
+        s = target(z=q, x= x)
+    else:
+        s = target(q)
+    grad = torch.autograd.grad(s.sum(), q)[0]
+    return s, -grad
+
+def compute_log_weight_achille(z_1, z_2, target, proposal, gamma, eps_std, clip = 50.0):
+    #print(first.requires_grad)
+    E_first, grad_first = get_grad(z_1, target, x=None)
+        
+    new_first = z_1 - step_lr * grad_first
+    #new_first = new_first.data
+    
+    E_second, grad_second = get_grad(z_2, target, x=None)
+        
+    new_second = z_2 - step_lr * grad_second
+    new_second = new_second.data
+    
+    log_energy = E_first - E_second
+    vec_1 = (z_1 - new_second)/eps_std
+    vec_2 = (z_2 - new_first)/eps_std
+    #print(vec_1)
+    #print(vec_2)
+    
+    propose_numerator = proposal.log_prob(vec_1).sum(dim=1)
+    propose_denumerator = proposal.log_prob(vec_2).sum(dim=1)
+    #print(propose_numerator)
+    #print(propose_denumerator)
+
+    log_propose_part = propose_numerator - propose_denumerator
+    #print(log_propose_part)
+    
+    log_weight = log_energy + log_propose_part
+    #log_weight = torch.clamp(log_weight, -clip, clip)
+    #log_weight = log_weight - torch.max(log_weight, 0)[0]
+
+    #weight = torch.exp(log_weight)
+    #weight = weight/torch.sum(weight, 0)
+    log_weight = log_weight.detach()
+    
+    return log_weight
+
+def xtry_mala_dynamics_achille(y0, y1, target, alpha, n_steps, gamma, eps_std, N):
+    y0_arr = [y0.detach().clone()]
+    y1_arr = [y1.detach().clone()]
+    weights_arr = []
+    batch_size, z_dim = y0.shape[0], y0.shape[1]
+    loc = torch.zeros(z_dim).to(device)
+    scale = torch.ones(z_dim).to(device)
+    normal = Normal(loc, scale)
+
+    for _ in tqdm(range(n_steps)):
+        #print(f"step = {_}")
+        U = torch.randint(high = N, size = (batch_size,)).tolist()
+        #print(f"U = {U}")
+        #print(f"y1 = {y1}")
+        #print(f"y0 = {y0}")
+                          
+        Z0 = y0.unsqueeze(1).repeat(1, N, 1)
+        noise = normal.sample([batch_size, N])
+        #print(f"noise = {noise}")
+        
+        E_g_j, grad_g_j = get_grad(y0, target)
+        g_j = y0 - step_lr * grad_g_j
+        g_j = g_j.data
+        
+        g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
+        Z1 = g_j_N + eps_std*noise
+        #print(f"Z1 = {Z1}")
+        #print(f"Z0 = {Z0}")
+        Z1[np.arange(batch_size), U, :] = y0
+        #Z1[np.arange(batch_size), U, :] = y0
+        #print(f"Z1 = {Z1}")
+        
+        Z0_batch = Z0.view((batch_size*N, z_dim)).detach().clone()
+        Z1_batch = Z1.view((batch_size*N, z_dim)).detach().clone()
+        Z0_batch.requires_grad_(True)
+        Z1_batch.requires_grad_(True)
+        
+        log_weight =   compute_log_weight_achille(Z0_batch, Z1_batch, target, normal, gamma, eps_std, clip = 50.0)
+        log_weight = log_weight.view((batch_size, N))
+        max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
+        sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
+        
+        weight = weight/sum_weight
+        weights_arr.append(weight.detach().clone())
+        #print(f"weight = {weight}")
+        
+        indices = torch.multinomial(weight, 1)
+        indices_squeeze = indices.squeeze().tolist()
+        #print(f"indices = {indices_squeeze}")
+        #indices = indices.repeat(1, z_dim).unsqueeze(1)
+        #with torch.no_grad():
+        #    y1 = torch.gather(Z1, 1, indices).squeeze()
+        #    y1 = y1.data
+        #y1.requires_grad_(True)
+        y1 = Z1[np.arange(batch_size), indices_squeeze, :]
+        y1 = y1.data
+        y1.requires_grad_(True)
+        y1_arr.append(y1.detach().clone())
+        #print(f"y1 = {y1}")
+            
+        E_y1, grad_y1 = get_grad(y1, target)
+        noise_U = noise[np.arange(batch_size), U, :]
+        #print(f"noise U = {noise_U}")
+        y0 = y1 - step_lr * grad_y1 + eps_std*noise_U
+        y0 = y0.data
+        y0.requires_grad_(True)
+        y0_arr.append(y0.detach().clone())
+        #print("------------------------")
+        
+    return y0_arr, y1_arr, weights_arr

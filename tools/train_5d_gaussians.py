@@ -17,34 +17,48 @@ from torch import autograd
 from paths import (path_to_save_remote, 
                    path_to_save_local,
                    port_to_remote) 
+import importlib
+train_jensen = False
+if train_jensen:
+   module_name =  'params_5d_gaussians_jensen'
+else:
+   module_name =  'params_5d_gaussians_wasserstein' 
 
-from params_25gaussians import (random_seed,
-                                train_dataset_size,
-                                batch_size,
-                                sigma, 
-                                n_dim,
-                                n_layers_d,
-                                n_layers_g,
-                                n_hid_d,
-                                n_hid_g,
-                                n_out,
-                                normalize_to_0_1,
-                                loss_type,
-                                lr_init,
-                                betas,
-                                use_gradient_penalty,
-                                Lambda,
-                                num_epochs,
-                                num_epoch_for_save,
-                                batch_size_sample,
-                                k_g,
-                                k_d,
-                                mode,
-                                n_calib_pts,
-                                plot_mhgan,
-                                device)
+params_module = importlib.import_module(module_name)
 
-from utils import (prepare_25gaussian_data, 
+#from params_module import (random_seed,
+random_seed = params_module.random_seed
+batch_size = params_module.batch_size
+num_samples_in_cluster = params_module.num_samples_in_cluster
+dim = params_module.dim
+num_gaussian_per_dim = params_module.num_gaussian_per_dim
+coord_limits = params_module.coord_limits
+sigma = params_module.sigma 
+train_dataset_size = params_module.train_dataset_size
+n_dim = params_module.n_dim
+n_layers_d = params_module.n_layers_d
+n_layers_g = params_module.n_layers_g
+n_hid_d = params_module.n_hid_d
+n_hid_g = params_module.n_hid_g
+n_out = params_module.n_out
+normalize_to_0_1 = params_module.normalize_to_0_1
+loss_type = params_module.loss_type
+lr_init = params_module.lr_init
+betas = params_module.betas
+use_gradient_penalty = params_module.use_gradient_penalty
+Lambda = params_module.Lambda
+num_epochs = params_module.num_epochs
+num_epoch_for_save = params_module.num_epoch_for_save
+batch_size_sample = params_module.batch_size_sample
+k_g = params_module.k_g
+k_d = params_module.k_d
+mode = params_module.mode
+proj_list = params_module.proj_list
+n_calib_pts = params_module.n_calib_pts
+plot_mhgan = params_module.plot_mhgan
+device = params_module.device
+
+from utils import (prepare_gaussians, 
                    prepare_train_batches,
                    prepare_dataloader, 
                    logging)
@@ -56,17 +70,14 @@ from gan_fc_models import (Generator_fc,
 
 from gan_train import train_gan
 
-torch.manual_seed(random_seed)
-np.random.seed(random_seed)
-random.seed(random_seed)
-
-X_train, means = prepare_25gaussian_data(train_dataset_size,
-                                         sigma, 
-                                         random_seed)
-scaler = StandardScaler()
-X_train_std = scaler.fit_transform(X_train)
-#X_train_batches = prepare_train_batches(X_train, BATCH_SIZE) 
-train_dataloader = prepare_dataloader(X_train_std, batch_size, 
+X_train = prepare_gaussians(num_samples_in_cluster = num_samples_in_cluster, 
+                            dim = dim, 
+                            num_gaussian_per_dim = num_gaussian_per_dim, 
+                            coord_limits = coord_limits, 
+                            sigma = sigma,
+                            random_seed = random_seed)
+scaler = None 
+train_dataloader = prepare_dataloader(X_train, batch_size, 
                                       random_seed=random_seed)
 
 G = Generator_fc(n_dim=n_dim, 
@@ -86,11 +97,9 @@ D.init_weights(weights_init_2, random_seed=random_seed)
 d_optimizer = torch.optim.Adam(D.parameters(), 
                                betas = betas, 
                                lr = lr_init)
-#                               weight_decay = weight_decay)
 g_optimizer = torch.optim.Adam(G.parameters(), 
                                betas = betas, 
                                lr = lr_init)
-#                               weight_decay = weight_decay)
 
 cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
 new_dir = os.path.join(path_to_save_local, cur_time)
@@ -101,7 +110,7 @@ os.mkdir(path_to_plots)
 os.mkdir(path_to_models)
 path_to_logs = os.path.join(new_dir, 'logs.txt')
 
-logging(path_to_logs = path_to_logs,
+logging(path_to_logs = path_to_logs, 
         mode = mode, 
         train_dataset_size = train_dataset_size, 
         batch_size = batch_size, 
@@ -119,6 +128,7 @@ logging(path_to_logs = path_to_logs,
         k_d = k_d)
 
 print("Start to train GAN")
+
 train_gan(X_train=X_train,
           train_dataloader=train_dataloader, 
           generator=G, 
@@ -144,4 +154,5 @@ train_gan(X_train=X_train,
           path_to_plots=path_to_plots,
           path_to_save_remote=path_to_save_remote,
           port_to_remote=port_to_remote,
+          proj_list=proj_list,
           plot_mhgan = plot_mhgan)

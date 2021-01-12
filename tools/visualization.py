@@ -11,7 +11,7 @@ import itertools
 import torch
 from torch.distributions import Normal
 
-from mh_2d_sampling import mh_sampling
+from mh_sampling import mh_sampling
 from ebm_2d_sampling import (langevin_sampling, 
                              mala_sampling, 
                              xtry_mala_sampling,
@@ -88,14 +88,16 @@ def plot_fake_data_mode(fake, X_train, mode, path_to_save,
     else:
        plt.show()
 
-def visualize_fake_data_projection(fake_data, X_train, path_to_save, 
-                                   proj_1, proj_2, 
-                                   title,
-                                   mode,
-                                   path_to_save_remote = None,
-                                   port_to_remote = None):
-    fake_data_proj = fake_data[:, [proj_1, proj_2]]
-    X_train_proj = X_train[:, [proj_1, proj_2]]
+def plot_fake_data_projection(fake, X_train, path_to_save, 
+                              proj_1, proj_2, 
+                              title,
+                              fake_label,
+                              scaler = None,
+                              path_to_save_remote = None,
+                              port_to_remote = None):
+    if scaler is not None:
+       fake = scaler.inverse_transform(fake)
+    fake_proj = fake[:, [proj_1, proj_2]]
 
     plt.figure(figsize=(8, 8))
     plt.xlim(-3., 3.)
@@ -103,21 +105,17 @@ def visualize_fake_data_projection(fake_data, X_train, path_to_save,
     plt.title(title, fontsize=20)
     X_train_proj = X_train[:, [proj_1, proj_2]]
 
-
     plt.scatter(X_train_proj[:, 0], X_train_proj[:, 1], alpha=0.5, color='gray',
                 marker='o', label = 'training samples')
-    plt.scatter(fake_data_proj[:, 0], fake_data_proj[:, 1], alpha=0.5, color='blue',
-                marker='o', label = 'samples by G')
+    plt.scatter(fake_proj[:, 0], fake_proj[:, 1], alpha=0.5, color='blue',
+                marker='o', label = fake_label)
     plt.xlabel(f"proj ind = {proj_1 + 1}")
     plt.ylabel(f"proj ind = {proj_2 + 1}")
     plt.legend()
     plt.grid(True)
     if path_to_save is not None:
-       cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-       plot_name = cur_time + f"_gan_sampling_" + mode + f"_proj1_{proj_1}_proj2_{proj_2}.pdf"
-       path_to_plot = os.path.join(path_to_save, plot_name)
-       plt.savefig(path_to_plot)
-       send_file_to_remote(path_to_plot,
+       plt.savefig(path_to_save)
+       send_file_to_remote(path_to_save,
                            port_to_remote, 
                            path_to_save_remote)
 
@@ -414,7 +412,6 @@ def epoch_visualization(X_train,
                                            path_to_plot_discriminator,
                                            epoch,
                                            scaler=scaler,
-                                           normalize_to_0_1=normalize_to_0_1,
                                            port_to_remote=port_to_remote, 
                                            path_to_save_remote=path_to_save_remote)
             if plot_mhgan:
@@ -432,23 +429,65 @@ def epoch_visualization(X_train,
                                      path_to_save_remote = path_to_save_remote,
                                      normalize_to_0_1 = normalize_to_0_1)
 
-        if proj_list is None:
             sample_fake_data(generator, X_train, epoch, path_to_save, 
                              scaler=scaler,
                              batch_size_sample=batch_size_sample,
                              port_to_remote=port_to_remote, 
                              path_to_save_remote=path_to_save_remote)
 
-        else:
-            fake_data = generator.sampling(batch_size_sample).data.cpu().numpy()
-            if scaler is not None:
-                fake_data = scaler.inverse_transform(fake_data)
-            title = f"Training and generated samples, epoch = {epoch}"
-            mode = f"{epoch}_epoch"
+        elif mode == '5d_gaussians':
+            fake_generator = generator.sampling(batch_size_sample).data.cpu().numpy()
+            cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+
+            if plot_mhgan:
+               if scaler is not None:
+                  X_train_scale = scaler.transform(X_train)
+               else:
+                  X_train_scale = X_train
+
+               print("Start to do MH sampling....")
+               type_calibrator = 'iso'
+               X_mh = mh_sampling(X_train_scale, 
+                                  generator, 
+                                  discriminator, 
+                                  generator.device, 
+                                  n_calib_pts, 
+                                  batch_size_sample=batch_size_sample,
+                                  normalize_to_0_1=normalize_to_0_1,
+                                  type_calibrator=type_calibrator)
+
             for i in range(len(proj_list)):
-                visualize_fake_data_projection(fake_data, X_train, path_to_save, 
-                                               proj_list[i][0], proj_list[i][1],
-                                               title,
-                                               mode,
-                                               port_to_remote=port_to_remote, 
-                                               path_to_save_remote=path_to_save_remote)
+                proj_1 = proj_list[i][0]
+                proj_2 = proj_list[i][1]
+                plot_name = cur_time + f"_gan_sampling_epoch_{epoch}_proj1_{proj_1}_proj2_{proj_2}.pdf"
+                path_to_plot_generator = os.path.join(path_to_save, plot_name)
+
+                title_generator = "Training and generated samples"
+                fake_label_generator = "samples by G"
+
+                plot_fake_data_projection(fake = fake_generator, 
+                                          X_train = X_train,
+                                          path_to_save = path_to_plot_generator, 
+                                          proj_1 = proj_1, 
+                                          proj_2 = proj_2,
+                                          title = title_generator,
+                                          fake_label = fake_label_generator, 
+                                          scaler = scaler,
+                                          path_to_save_remote = path_to_save_remote,
+                                          port_to_remote = port_to_remote)
+                if plot_mhgan:
+                   title_mhgan = "Training and MHGAN samples"
+                   fake_label_mhgan = 'MHGAN samples'
+                   mh_mode = 'mhgan'
+                   plot_name = cur_time + f'_{mh_mode}_epoch_{epoch}_proj1_{proj_1}_proj2_{proj_2}.pdf'
+                   path_to_plot_mhgan = os.path.join(path_to_save, plot_name)
+                   plot_fake_data_projection(fake = X_mh, 
+                                             X_train = X_train,
+                                             path_to_save = path_to_plot_mhgan, 
+                                             proj_1 = proj_1, 
+                                             proj_2 = proj_2,
+                                             title = title_mhgan,
+                                             fake_label = fake_label_mhgan, 
+                                             scaler = scaler,
+                                             path_to_save_remote = path_to_save_remote,
+                                             port_to_remote = port_to_remote)
