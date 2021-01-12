@@ -112,8 +112,7 @@ def prepare_25gaussian_data(batch_size=1000,
 
 def prepare_gaussians(num_samples_in_cluster, dim, 
                       num_gaussian_per_dim, coord_limits, 
-                      std = 0.1, random_state = 42,
-                      scale = 2.828):
+                      sigma = 0.1, random_seed = 42):
     num_clusters = num_gaussian_per_dim ** dim
     num_samples = num_samples_in_cluster * num_clusters
     coords_per_dim = np.linspace(-coord_limits, 
@@ -124,9 +123,8 @@ def prepare_gaussians(num_samples_in_cluster, dim,
     dataset = sklearn.datasets.make_blobs(n_samples = num_samples, 
                                           n_features = dim, 
                                           centers = centers, 
-                                          cluster_std = std,
-                                          random_state = random_state)[0]
-    dataset /= scale
+                                          cluster_std = sigma,
+                                          random_state = random_seed)[0]
     return dataset
 
 def prepare_train_batches(dataset, batch_size):
@@ -144,12 +142,13 @@ def prepare_dataloader(dataset, batch_size, random_seed=None):
     dataloader = DataLoader(poolset, batch_size=batch_size, shuffle=True)
     return dataloader
 
-def logging(path_to_logs, train_dataset_size,
+def logging(path_to_logs, mode, train_dataset_size,
             batch_size, n_dim, n_layers_g, 
             n_layers_d, n_hid_g, n_hid_d, 
             n_out, loss_type, lr_init, 
             Lambda, num_epochs, k_g, k_d):
     f = open(path_to_logs, "w")
+    f.write(f"Dataset = {mode}\n")
     f.write("Setup for training GANs:\n")
     f.write(f"Train dataset size = {train_dataset_size}\n")
     f.write(f"Batch size = {batch_size}\n")
