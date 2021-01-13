@@ -41,9 +41,9 @@ def sample_fake_data(generator, X_train, epoch,
     plt.xlim(-3., 3.)
     plt.ylim(-3., 3.)
     plt.title("Training and generated samples", fontsize=20)
-    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.2, color='gray', 
                 marker='o', label = 'training samples')
-    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.5, color='blue', 
+    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.2, color='blue', 
                 marker='o', label = 'samples by G')
     plt.legend()
     plt.grid(True)
@@ -71,12 +71,12 @@ def plot_fake_data_mode(fake, X_train, mode, path_to_save,
     plt.xlim(-3., 3.)
     plt.ylim(-3., 3.)
     plt.title(f"Training and {mode} samples", fontsize=20)
-    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.2, color='gray', 
                 marker='o', label = 'training samples')
     label = f'{mode} samples'
     if params is not None:
        label += (', ' + params)
-    plt.scatter(fake[:,:1], fake[:,1:], alpha=0.5, color='blue', 
+    plt.scatter(fake[:,:1], fake[:,1:], alpha=0.2, color='blue', 
                 marker='o', label = label)
     plt.legend()
     plt.grid(True)
@@ -105,9 +105,9 @@ def plot_fake_data_projection(fake, X_train, path_to_save,
     plt.title(title, fontsize=20)
     X_train_proj = X_train[:, [proj_1, proj_2]]
 
-    plt.scatter(X_train_proj[:, 0], X_train_proj[:, 1], alpha=0.5, color='gray',
+    plt.scatter(X_train_proj[:, 0], X_train_proj[:, 1], alpha=0.2, color='gray',
                 marker='o', label = 'training samples')
-    plt.scatter(fake_proj[:, 0], fake_proj[:, 1], alpha=0.5, color='blue',
+    plt.scatter(fake_proj[:, 0], fake_proj[:, 1], alpha=0.2, color='blue',
                 marker='o', label = fake_label)
     plt.xlabel(f"proj ind = {proj_1 + 1}")
     plt.ylabel(f"proj ind = {proj_2 + 1}")
