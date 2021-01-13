@@ -12,10 +12,10 @@ import torch
 from torch.distributions import Normal
 
 from mh_sampling import mh_sampling
-from ebm_2d_sampling import (langevin_sampling, 
-                             mala_sampling, 
-                             xtry_mala_sampling,
-                             calculate_energy)
+from ebm_sampling import (langevin_sampling, 
+                          mala_sampling, 
+                          xtry_mala_sampling,
+                          calculate_energy)
  
 def send_file_to_remote(path_to_file,
                         port_to_remote, 

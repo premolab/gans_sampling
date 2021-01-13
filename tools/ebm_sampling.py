@@ -465,16 +465,16 @@ def get_grad(q, target, x=None):
     grad = torch.autograd.grad(s.sum(), q)[0]
     return s, -grad
 
-def compute_log_weight_achille(z_1, z_2, target, proposal, gamma, eps_std, clip = 50.0):
+def compute_log_weight_general(z_1, z_2, target, proposal, gamma, eps_std):
     #print(first.requires_grad)
     E_first, grad_first = get_grad(z_1, target, x=None)
         
-    new_first = z_1 - step_lr * grad_first
+    new_first = z_1 - gamma * grad_first
     #new_first = new_first.data
     
     E_second, grad_second = get_grad(z_2, target, x=None)
         
-    new_second = z_2 - step_lr * grad_second
+    new_second = z_2 - gamma * grad_second
     new_second = new_second.data
     
     log_energy = E_first - E_second
@@ -501,13 +501,13 @@ def compute_log_weight_achille(z_1, z_2, target, proposal, gamma, eps_std, clip 
     
     return log_weight
 
-def xtry_mala_dynamics_achille(y0, y1, target, alpha, n_steps, gamma, eps_std, N):
+def xtry_mala_dynamics_general(y0, y1, target, alpha, n_steps, gamma, eps_std, N):
     y0_arr = [y0.detach().clone()]
     y1_arr = [y1.detach().clone()]
     weights_arr = []
     batch_size, z_dim = y0.shape[0], y0.shape[1]
-    loc = torch.zeros(z_dim).to(device)
-    scale = torch.ones(z_dim).to(device)
+    loc = torch.zeros(z_dim).to(y0.device)
+    scale = torch.ones(z_dim).to(y0.device)
     normal = Normal(loc, scale)
 
     for _ in tqdm(range(n_steps)):
@@ -522,7 +522,7 @@ def xtry_mala_dynamics_achille(y0, y1, target, alpha, n_steps, gamma, eps_std, N
         #print(f"noise = {noise}")
         
         E_g_j, grad_g_j = get_grad(y0, target)
-        g_j = y0 - step_lr * grad_g_j
+        g_j = y0 - gamma * grad_g_j
         g_j = g_j.data
         
         g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
@@ -538,7 +538,7 @@ def xtry_mala_dynamics_achille(y0, y1, target, alpha, n_steps, gamma, eps_std, N
         Z0_batch.requires_grad_(True)
         Z1_batch.requires_grad_(True)
         
-        log_weight =   compute_log_weight_achille(Z0_batch, Z1_batch, target, normal, gamma, eps_std, clip = 50.0)
+        log_weight =   compute_log_weight_general(Z0_batch, Z1_batch, target, normal, gamma, eps_std)
         log_weight = log_weight.view((batch_size, N))
         max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
         log_weight = log_weight - max_logs
@@ -566,7 +566,7 @@ def xtry_mala_dynamics_achille(y0, y1, target, alpha, n_steps, gamma, eps_std, N
         E_y1, grad_y1 = get_grad(y1, target)
         noise_U = noise[np.arange(batch_size), U, :]
         #print(f"noise U = {noise_U}")
-        y0 = y1 - step_lr * grad_y1 + eps_std*noise_U
+        y0 = y1 - gamma * grad_y1 + eps_std*noise_U
         y0 = y0.data
         y0.requires_grad_(True)
         y0_arr.append(y0.detach().clone())
