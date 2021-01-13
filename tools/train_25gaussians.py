@@ -101,11 +101,22 @@ os.mkdir(path_to_plots)
 os.mkdir(path_to_models)
 path_to_logs = os.path.join(new_dir, 'logs.txt')
 
-logging(path_to_logs, train_dataset_size, 
-        batch_size, n_dim, n_layers_g, 
-        n_layers_d, n_hid_g, n_hid_d, 
-        n_out, loss_type, lr_init, 
-        Lambda, num_epochs, k_g, k_d)
+logging(path_to_logs = path_to_logs,
+        mode = mode, 
+        train_dataset_size = train_dataset_size, 
+        batch_size = batch_size, 
+        n_dim = n_dim, 
+        n_layers_g = n_layers_g, 
+        n_layers_d = n_layers_d, 
+        n_hid_g = n_hid_g, 
+        n_hid_d = n_hid_d, 
+        n_out = n_out, 
+        loss_type = loss_type, 
+        lr_init = lr_init, 
+        Lambda = Lambda, 
+        num_epochs = num_epochs, 
+        k_g = k_g, 
+        k_d = k_d)
 
 print("Start to train GAN")
 train_gan(X_train=X_train,
