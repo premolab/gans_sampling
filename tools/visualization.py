@@ -278,7 +278,8 @@ def mala_sampling_visualize(generator,
                             step_lr = 1e-3,
                             eps_std = 1e-2,
                             n_steps = 5000,
-                            n_batches = 1):
+                            n_batches = 1,
+                            acceptance_rule='Hastings'):
     batchsize = batch_size_sample // n_batches
     X_mala, zs = mala_sampling(generator, 
                                    discriminator, 
@@ -287,8 +288,9 @@ def mala_sampling_visualize(generator,
                                    step_lr, 
                                    eps_std, 
                                    n=batch_size_sample, 
-                                   batchsize=batchsize)
-    mode = 'MALA'
+                                   batchsize=batchsize,
+                                   acceptance_rule=acceptance_rule)
+    mode = f'MALA/{acceptance_rule}'
     params = f'lr = {step_lr}, std noise = {eps_std}'
     plot_fake_data_mode(X_mala, X_train, mode, path_to_save, 
                         scaler = scaler,

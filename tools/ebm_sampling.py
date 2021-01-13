@@ -364,7 +364,7 @@ def langevin_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize):
     zs = np.stack(zs, axis=0)
     return ims, zs
     
-def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
+def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std, acceptance_rule='hastings'):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     loc = torch.zeros(z_dim).to(gen.device)
@@ -372,7 +372,7 @@ def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
     
     normal = Normal(loc, scale)
     uniform = Uniform(low = 0.0, high = 1.0)
-    acceptance = torch.zeros(batch_size).to(gen.device)
+    acceptence = torch.zeros(batch_size).to(gen.device)
 
     for _ in range(n_steps):
         noise = normal.sample([batch_size])
@@ -395,31 +395,33 @@ def mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
         
         propose_part = torch.sum(propose_part_2 - propose_part_1, dim=1)
 
-        log_accept_prob = propose_part + energy_part
+        if acceptance_rule == 'Hastings':
+            log_accept_prob = propose_part + energy_part
+
+        elif acceptance_rule == 'Barker':
+            log_ratio = propose_part + energy_part
+            log_accept_prob = -torch.log(1. + torch.exp(-1.*log_ratio))
+
         generate_uniform_var = uniform.sample([batch_size]).to(gen.device)
         log_generate_uniform_var = torch.log(generate_uniform_var)
-
         mask = log_generate_uniform_var < log_accept_prob
-        acceptance += mask
-        #print(mask)
-        #print(z)
-        #print(new_z)
+        
+        acceptence += mask
         with torch.no_grad():
             z[mask] = new_z[mask].detach().clone()
             z = z.data
-            #print(z)
             z.requires_grad_(True)
             z_sp.append(z.clone().detach())
         
-    return z_sp, acceptance
+    return z_sp, acceptence
     
-def mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize):
+def mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, n, batchsize, acceptance_rule='Hastings'):
     ims = []
     zs = []
     for i in tqdm(range(0, n, batchsize)):
         z = gen.make_hidden(batchsize)
         z.requires_grad_(True)
-        z_sp, acceptance = mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std)
+        z_sp, acceptence = mala_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std, acceptance_rule=acceptance_rule)
         last_z_sp = z_sp[-1].to(gen.device)
         x = gen(last_z_sp).data.cpu().numpy()
         ims.append(x)
