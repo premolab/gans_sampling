@@ -16,7 +16,123 @@ from pyro.infer import MCMC, NUTS, HMC
 from functools import partial
 from tqdm import tqdm
 
-def calculate_energy(params, generator, discriminator, P, normalize_to_0_1):
+torchType = torch.float32
+class Target(nn.Module):
+    """
+    Base class for a custom target distribution
+    """
+
+    def __init__(self, kwargs):
+        super().__init__()
+        self.device = kwargs.device
+        self.torchType = torchType
+        self.device_zero = torch.tensor(0., dtype=self.torchType, device=self.device)
+        self.device_one = torch.tensor(1., dtype=self.torchType, device=self.device)
+
+    def prob(self, x):
+        """
+        The method returns target density, estimated at point x
+        Input:
+        x - datapoint
+        Output:
+        density - p(x)
+        """
+        # You should define the class for your custom distribution
+        raise NotImplementedError
+
+    def log_prob(self, x):
+        """
+        The method returns target logdensity, estimated at point x
+        Input:
+        x - datapoint
+        Output:
+        log_density - log p(x)
+        """
+        # You should define the class for your custom distribution
+        raise NotImplementedError
+
+    def sample(self, n):
+        """
+        The method returns samples from the distribution
+        Input:
+        n - amount of samples
+        Output:
+        samples - samples from the distribution
+        """
+        # You should define the class for your custom distribution
+        raise NotImplementedError
+
+
+
+class Gaussian_mixture(Target):
+    """
+    Mixture of n gaussians (multivariate)
+    """
+
+    def __init__(self, kwargs):
+        super().__init__(kwargs)
+        self.device = kwargs.device
+        self.torchType = torchType
+        self.num = kwargs['num_gauss']
+        self.pis = kwargs['p_gaussians']
+        self.locs = kwargs['locs']  # list of locations for each of these gaussians
+        self.covs = kwargs['covs']  # list of covariance matrices for each of these gaussians
+        self.peak = [None] * self.num
+        for i in range(self.num):
+            self.peak[i] = torch.distributions.MultivariateNormal(loc=self.locs[i], covariance_matrix=self.covs[i])
+
+    def get_density(self, x):
+        """
+        The method returns target density
+        Input:
+        x - datapoint
+        z - latent vaiable
+        Output:
+        density - p(x)
+        """
+        density = self.log_prob(x).exp()
+        return density
+
+    def log_prob(self, z, x=None):
+        """
+        The method returns target logdensity
+        Input:
+        x - datapoint
+        z - latent variable
+        Output:
+        log_density - log p(x)
+        """
+        log_p = torch.tensor([], device=self.device)
+        #pdb.set_trace()
+        for i in range(self.num):
+            log_paux = (torch.log(self.pis[i]) + self.peak[i].log_prob(z)).view(-1, 1)
+            log_p = torch.cat([log_p, log_paux], dim=-1)
+        log_density = torch.logsumexp(log_p, dim=1)  # + torch.tensor(1337., device=self.device)
+        return log_density
+
+class DotDict(dict):
+    """
+    a dictionary that supports dot notation
+    as well as dictionary access notation
+    usage: d = DotDict() or d = DotDict({'val1':'first'})
+    set attributes: d.val2 = 'second' or d['val2'] = 'second'
+    get attributes: d.val2 or d['val2']
+    """
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+    
+def get_grad(q, target, x=None):
+    q = q.detach().requires_grad_()
+    if x is not None:
+        s = -target(z=q, x= x)
+    else:
+        s = -target(q)
+    grad = torch.autograd.grad(s.sum(), q)[0]
+    return s, grad    
+
+
+def calculate_energy(params, generator, discriminator, P, normalize_to_0_1, log_prob=False):
     generator_points = generator(params)
     if normalize_to_0_1:
         GAN_part = -discriminator(generator_points).view(-1)
@@ -26,7 +142,11 @@ def calculate_energy(params, generator, discriminator, P, normalize_to_0_1):
                      torch.log1p(-sigmoid_GAN_part)).view(-1)
         
     prior_part = -torch.sum(P.log_prob(params), dim=1)
-    return GAN_part + prior_part
+    energy = GAN_part + prior_part
+    if not log_prob:
+       return energy
+    else:
+       return -energy
 
 def e_grad(z, P, gen, dis, alpha, ret_e=False, e_batch=False):
     logp_z = torch.sum(P.log_prob(z), dim=1)
@@ -158,78 +278,56 @@ def xtry_mala_dynamics(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
         
     return y0_arr, y1_arr, weights_arr
     
-def xtry_mala_dynamics_v2(y0, y1, gen, dis, alpha, n_steps, step_lr, eps_std, N):
-    y0_arr = [y0.detach().clone()]
-    y1_arr = [y1.detach().clone()]
-    weights_arr = []
-    batch_size, z_dim = y0.shape[0], y0.shape[1]
-    loc = torch.zeros(z_dim).to(gen.device)
-    scale = torch.ones(z_dim).to(gen.device)
+def xtry_langevin_on_target(y, target, n_steps, step_lr, eps_std, N):
+    y_arr = [y.detach().clone()]
+
+    batch_size, z_dim = y.shape[0], y.shape[1]
+    loc = torch.zeros(z_dim).to(y.device)
+    scale = torch.ones(z_dim).to(y.device)
     normal = Normal(loc, scale)
 
-    for _ in range(n_steps):
-        #print(f"step = {_}")
-        U_1d = torch.randint(high = N, size = (batch_size,)).tolist()
-        #print(U_1d.shape)
-                          
-        Z0 = y0.unsqueeze(1).repeat(1, N, 1)
-        #Z1 = y1.unsqueeze(1).repeat(1, N, 1)
+    for _ in tqdm(range(n_steps)):
+        U = torch.randint(0, N, (batch_size,)).tolist()
+        X = y.unsqueeze(1).repeat(1, N, 1)
         noise = normal.sample([batch_size, N])
-        
-        E_g_j, grad_g_j = e_grad(y0, normal, gen, dis, alpha, ret_e=True)
-        g_j = y0 - step_lr * grad_g_j
-        g_j = g_j.data
-        
-        g_j_N = g_j.unsqueeze(1).repeat(1, N, 1)
-        Z1 = g_j_N + eps_std*noise
-        Z1[np.arange(batch_size), U_1d, :] = y0
-        
-        Z1 = Z1.detach()
-        Z0 = Z0.detach()
-        
-        cur_weight = []
-        
-        for i in range(batch_size):
-            #print(f"num start = {i}")
-            first = Z0[i].data
-            second = Z1[i].data
-            first.requires_grad_(True)
-            second.requires_grad_(True)
-            
-            log_weight = compute_log_weight(first, second, gen, dis, normal, alpha, step_lr, eps_std)
-            max_logs = torch.max(log_weight, dim = 0)[0]
-            log_weight = log_weight - max_logs
-            weight = torch.exp(log_weight)
-            sum_weight = torch.sum(weight, dim = 0)
 
-            weight = weight/sum_weight
-            cur_weight.append(weight.detach().clone())
-            #print(f"weight = {weight}")
+        _, grad_y = get_grad(y, target, x=None)
 
-            indices = torch.multinomial(weight, 1)
-            #print(f"indice = {indices}")
-            with torch.no_grad():
-                y1[i] = Z1[i][indices]
+        g = y - step_lr * grad_y
+        g = g.data
         
-        cur_weight = torch.stack(cur_weight, dim = 0)
-        weights_arr.append(cur_weight)
+        g_N = g.unsqueeze(1).repeat(1, N, 1)
+        X = g_N + eps_std*noise
+        X[np.arange(batch_size), U, :] = y
+
+        X_batch = X.view((batch_size*N, z_dim)).detach().clone()
+        X_batch.requires_grad_(True)
+        minus_log_pi_x, minus_g_log_pi_x = get_grad(X_batch, target, x=None)
+        T_x = X_batch - step_lr * minus_g_log_pi_x
+        T_x = T_x.reshape(X.shape)
+        minus_log_pi_x = minus_log_pi_x.reshape(X.shape[:-1])
+        log_gauss = -(X[:, :, None] - T_x[:, None, :]).norm(p=2, dim=-1)**2 / (2 * eps_std**2)
+        sum_log_gauss = log_gauss.sum(1) - torch.diagonal(log_gauss, dim1=1, dim2=2)
         
-        y1 = y1.data
-        y1.requires_grad_(True)    
-        y1_arr.append(y1.detach().clone())
-            
-        E_y1, grad_y1 = e_grad(y1, normal, gen, dis, alpha, ret_e=True)
-        #noise_U = torch.gather(noise, 1, U).squeeze()   
-        #noise_U = torch.zeros_like(y1)
-        #for i in range(batch_size):
-        #    noise_U[i] = noise[i][U_1d[i]]
-        noise_U = noise[np.arange(batch_size), U_1d, :]                  
-        y0 = y1 - step_lr * grad_y1 + eps_std*noise_U
-        y0 = y0.data
-        y0.requires_grad_(True)
-        y0_arr.append(y0.detach().clone())
-        
-    return y0_arr, y1_arr, weights_arr
+        log_weight = -minus_log_pi_x + sum_log_gauss
+
+        max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
+        sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
+        weight = weight/sum_weight
+
+        indices = torch.multinomial(weight, 1)
+        #print((indices == torch.tensor(U).unsqueeze(1)).sum().item() / float(batch_size))
+        indices = indices.repeat(1, z_dim).unsqueeze(1)
+
+        with torch.no_grad():
+            y = torch.gather(X, 1, indices).squeeze()
+            y = y.data
+        y.requires_grad_(True)
+        y_arr.append(y.detach().clone())
+
+    return y_arr
 
 def langevin_dynamics(z, gen, dis, alpha, n_steps, step_lr, eps_std):
     z_sp = []
@@ -349,121 +447,6 @@ def xtry_mala_sampling(gen, dis, alpha, n_steps, step_lr, eps_std, N, n, batchsi
     ims = np.asarray(ims).reshape(-1, y0.shape[-1])
     zs = np.stack(zs, axis=0)
     return ims, zs
-
-torchType = torch.float32
-class Target(nn.Module):
-    """
-    Base class for a custom target distribution
-    """
-
-    def __init__(self, kwargs):
-        super().__init__()
-        self.device = kwargs.device
-        self.torchType = torchType
-        self.device_zero = torch.tensor(0., dtype=self.torchType, device=self.device)
-        self.device_one = torch.tensor(1., dtype=self.torchType, device=self.device)
-
-    def prob(self, x):
-        """
-        The method returns target density, estimated at point x
-        Input:
-        x - datapoint
-        Output:
-        density - p(x)
-        """
-        # You should define the class for your custom distribution
-        raise NotImplementedError
-
-    def log_prob(self, x):
-        """
-        The method returns target logdensity, estimated at point x
-        Input:
-        x - datapoint
-        Output:
-        log_density - log p(x)
-        """
-        # You should define the class for your custom distribution
-        raise NotImplementedError
-
-    def sample(self, n):
-        """
-        The method returns samples from the distribution
-        Input:
-        n - amount of samples
-        Output:
-        samples - samples from the distribution
-        """
-        # You should define the class for your custom distribution
-        raise NotImplementedError
-
-
-
-class Gaussian_mixture(Target):
-    """
-    Mixture of n gaussians (multivariate)
-    """
-
-    def __init__(self, kwargs):
-        super().__init__(kwargs)
-        self.device = kwargs.device
-        self.torchType = torchType
-        self.num = kwargs['num_gauss']
-        self.pis = kwargs['p_gaussians']
-        self.locs = kwargs['locs']  # list of locations for each of these gaussians
-        self.covs = kwargs['covs']  # list of covariance matrices for each of these gaussians
-        self.peak = [None] * self.num
-        for i in range(self.num):
-            self.peak[i] = torch.distributions.MultivariateNormal(loc=self.locs[i], covariance_matrix=self.covs[i])
-
-    def get_density(self, x):
-        """
-        The method returns target density
-        Input:
-        x - datapoint
-        z - latent vaiable
-        Output:
-        density - p(x)
-        """
-        density = self.log_prob(x).exp()
-        return density
-
-    def log_prob(self, z, x=None):
-        """
-        The method returns target logdensity
-        Input:
-        x - datapoint
-        z - latent variable
-        Output:
-        log_density - log p(x)
-        """
-        log_p = torch.tensor([], device=self.device)
-        #pdb.set_trace()
-        for i in range(self.num):
-            log_paux = (torch.log(self.pis[i]) + self.peak[i].log_prob(z)).view(-1, 1)
-            log_p = torch.cat([log_p, log_paux], dim=-1)
-        log_density = torch.logsumexp(log_p, dim=1)  # + torch.tensor(1337., device=self.device)
-        return log_density
-
-class DotDict(dict):
-    """
-    a dictionary that supports dot notation
-    as well as dictionary access notation
-    usage: d = DotDict() or d = DotDict({'val1':'first'})
-    set attributes: d.val2 = 'second' or d['val2'] = 'second'
-    get attributes: d.val2 or d['val2']
-    """
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-def get_grad(q, target, x=None):
-    q = q.detach().requires_grad_()
-    if x is not None:
-        s = target(z=q, x= x)
-    else:
-        s = target(q)
-    grad = torch.autograd.grad(s.sum(), q)[0]
-    return s, -grad
 
 def compute_log_weight_general(z_1, z_2, target, proposal, gamma, eps_std):
     #print(first.requires_grad)
