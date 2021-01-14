@@ -237,10 +237,11 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance
         
         energy_part = E - E_new
         
-        propose_vec = z - new_z + grad_step*grad_new
+        propose_vec_1 = z - new_z + grad_step*grad_new
+        propose_vec_2 = new_z - z + grad_step*grad
         
-        propose_part_1 = proposal.log_prob(eps/eps_scale)
-        propose_part_2 = proposal.log_prob(propose_vec/eps_scale)
+        propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
+        propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
         
         propose_part = propose_part_2 - propose_part_1
 
