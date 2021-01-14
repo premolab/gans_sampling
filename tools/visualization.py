@@ -14,8 +14,8 @@ from torch.distributions import Normal
 from mh_sampling import mh_sampling
 from ebm_sampling import (langevin_sampling, 
                           mala_sampling, 
-                          xtry_mala_sampling,
-                          calculate_energy)
+                          xtry_langevin_sampling,
+                          gan_energy)
  
 def send_file_to_remote(path_to_file,
                         port_to_remote, 
@@ -28,8 +28,9 @@ def send_file_to_remote(path_to_file,
           print(f"Try to send file {path_to_file} to remote server....".format(path_to_file))
           os.system(command)
 
-def sample_fake_data(generator, X_train, epoch, 
-                     path_to_save,
+def sample_fake_data(generator, X_train,  
+                     path_to_save = None,
+                     epoch = None,
                      scaler = None, 
                      batch_size_sample = 5000,
                      path_to_save_remote = None,
@@ -47,7 +48,7 @@ def sample_fake_data(generator, X_train, epoch,
                 marker='o', label = 'samples by G')
     plt.legend()
     plt.grid(True)
-    if path_to_save is not None:
+    if (path_to_save is not None) and (epoch is not None):
        cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
        plot_name = cur_time + f'_gan_sampling_{epoch}_epoch.pdf'
        path_to_plot = os.path.join(path_to_save, plot_name)
@@ -59,7 +60,8 @@ def sample_fake_data(generator, X_train, epoch,
     else:
        plt.show()
 
-def plot_fake_data_mode(fake, X_train, mode, path_to_save, 
+def plot_fake_data_mode(fake, X_train, mode, 
+                        path_to_save = None, 
                         scaler = None,
                         path_to_save_remote = None,
                         port_to_remote = None,
@@ -88,10 +90,11 @@ def plot_fake_data_mode(fake, X_train, mode, path_to_save,
     else:
        plt.show()
 
-def plot_fake_data_projection(fake, X_train, path_to_save, 
+def plot_fake_data_projection(fake, X_train, 
                               proj_1, proj_2, 
                               title,
                               fake_label,
+                              path_to_save = None,
                               scaler = None,
                               path_to_save_remote = None,
                               port_to_remote = None):
@@ -122,16 +125,16 @@ def plot_fake_data_projection(fake, X_train, path_to_save,
     else:
        plt.show()
 
-def discriminator_2d_visualization(discriminator,
-                                   x_range,
-                                   y_range,
-                                   path_to_save,
-                                   epoch,
-                                   scaler = None,
-                                   port_to_remote = None, 
-                                   path_to_save_remote = None,
-                                   normalize_to_0_1 = True,
-                                   num_points = 700):
+def plot_discriminator_2d(discriminator,
+                          x_range,
+                          y_range,
+                          path_to_save = None,
+                          epoch = None,
+                          scaler = None,
+                          port_to_remote = None, 
+                          path_to_save_remote = None,
+                          normalize_to_0_1 = True,
+                          num_points = 700):
     x = torch.linspace(-x_range, x_range, num_points)
     y = torch.linspace(-y_range, y_range, num_points)
     x_t = x.view(-1, 1).repeat(1, y.size(0))
@@ -163,7 +166,10 @@ def discriminator_2d_visualization(discriminator,
     #small_heatmap = sigmoid_heatmap[:-1, :-1]
     figure, axes = plt.subplots(figsize=(8, 8))
     z = axes.contourf(x, y, heatmap, 10, cmap='viridis')
-    title = f"Discriminator heatmap, epoch = {epoch}"
+    if epoch is not None:
+       title = f"Discriminator heatmap, epoch = {epoch}"
+    else:
+       title = f"Discriminator heatmap"
     axes.set_title(title)
     axes.axis([l_x, r_x, l_y, r_y])
     figure.colorbar(z)
@@ -173,14 +179,14 @@ def discriminator_2d_visualization(discriminator,
                            port_to_remote, 
                            path_to_save_remote)
 
-def visualize_potential_energy(discriminator,
-                               generator,
-                               x_range,
-                               y_range,
-                               path_to_save = None,
-                               norm_grads = False,
-                               normalize_to_0_1 = True,
-                               num_points = 100):
+def plot_potential_energy(target_energy,
+                          x_range,
+                          y_range,
+                          device,
+                          path_to_save = None,
+                          norm_grads = False,
+                          normalize_to_0_1 = True,
+                          num_points = 100):
     x = torch.linspace(-x_range, x_range, num_points)
     y = torch.linspace(-y_range, y_range, num_points)
     x_t = x.view(-1, 1).repeat(1, y.size(0))
@@ -191,21 +197,11 @@ def visualize_potential_energy(discriminator,
     batch[:, 0] = x_t_batch[:, 0]
     batch[:, 1] = y_t_batch[:, 0]
 
-    batch = batch.to(discriminator.device)
-    
-    n_dim = generator.n_dim
-    loc = torch.zeros(n_dim).to(generator.device)
-    scale = torch.ones(n_dim).to(generator.device)
-    normal = Normal(loc, scale)
+    batch = batch.to(device)
 
-    fun_energy = partial(calculate_energy, 
-                         generator = generator, 
-                         discriminator = discriminator, 
-                         P = normal,
-                         normalize_to_0_1 = normalize_to_0_1)
     if norm_grads:
         batch.requires_grad_(True)
-        batch_energy = fun_energy(params = batch).sum() 
+        batch_energy = target_energy(batch).sum() 
         batch_energy.backward()
         batch_grads = batch.grad.detach().cpu()
         batch_grads_norm = torch.norm(batch_grads, p=2, dim=-1)
@@ -213,7 +209,7 @@ def visualize_potential_energy(discriminator,
                                         num_points)).detach().cpu().numpy()
         title = f"Latent energy norm gradients"
     else:
-        batch_energy = fun_energy(params = batch)
+        batch_energy = target_energy(batch)
         result = batch_energy.view((num_points, 
                                     num_points)).detach().cpu().numpy()
         title = "Latent energy"
@@ -236,111 +232,100 @@ def visualize_potential_energy(discriminator,
     else:
         plt.show()
 
-def langevin_sampling_visualize(generator, 
-                                discriminator,
-                                X_train,  
-                                path_to_save,
-                                alpha = 1.0,
-                                scaler = None, 
-                                batch_size_sample = 5000,
-                                path_to_save_remote = None,
-                                port_to_remote = None,
-                                step_lr = 1e-3,
-                                eps_std = 1e-2,
-                                n_steps = 5000,
-                                n_batches = 1):
+def langevin_sampling_plot_2d(target,
+                              proposal,
+                              X_train,  
+                              path_to_save = None,
+                              scaler = None, 
+                              batch_size_sample = 5000,
+                              path_to_save_remote = None,
+                              port_to_remote = None,
+                              grad_step = 1e-3,
+                              eps_scale = 1e-2,
+                              n_steps = 5000,
+                              n_batches = 1,
+                              latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_langevin, zs = langevin_sampling(generator, 
-                                       discriminator, 
-                                       alpha, 
-                                       n_steps, 
-                                       step_lr, 
-                                       eps_std, 
-                                       n=batch_size_sample, 
-                                       batchsize=batchsize)
-    mode = 'Langevin'
-    params = f'lr = {step_lr}, std noise = {eps_std}'
-    plot_fake_data_mode(X_langevin, X_train, mode, path_to_save, 
+    X_langevin, zs = langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, batch_size_sample, batchsize)
+    if latent_transform is not None:
+        X_langevin = torch.FloatTensor(X_langevin).to(proposal.device)
+        X_langevin = latent_transform(X_langevin).data.cpu().numpy()
+    mode = 'ULA'
+    params = f'lr = {grad_step}, std noise = {eps_scale}'
+    plot_fake_data_mode(X_langevin, X_train, mode, 
+                        path_to_save = path_to_save, 
                         scaler = scaler,
                         path_to_save_remote = path_to_save_remote,
                         port_to_remote = port_to_remote,
                         params = params)
                         
-def mala_sampling_visualize(generator, 
-                            discriminator,
-                            X_train,  
-                            path_to_save,
-                            alpha = 1.0,
-                            scaler = None, 
-                            batch_size_sample = 5000,
-                            path_to_save_remote = None,
-                            port_to_remote = None,
-                            step_lr = 1e-3,
-                            eps_std = 1e-2,
-                            n_steps = 5000,
-                            n_batches = 1,
-                            acceptance_rule='Hastings'):
+def mala_sampling_plot_2d(target,
+                          proposal,
+                          X_train,  
+                          path_to_save = None,
+                          scaler = None, 
+                          batch_size_sample = 5000,
+                          path_to_save_remote = None,
+                          port_to_remote = None,
+                          grad_step = 1e-3,
+                          eps_scale = 1e-2,
+                          n_steps = 5000,
+                          n_batches = 1,
+                          acceptance_rule = 'Hastings',
+                          latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_mala, zs = mala_sampling(generator, 
-                                   discriminator, 
-                                   alpha, 
-                                   n_steps, 
-                                   step_lr, 
-                                   eps_std, 
-                                   n=batch_size_sample, 
-                                   batchsize=batchsize,
-                                   acceptance_rule=acceptance_rule)
+    X_mala, zs = mala_sampling(target, proposal, n_steps, grad_step, eps_scale, batch_size_sample, batchsize, acceptance_rule=acceptance_rule)
+    if latent_transform is not None:
+        X_mala = torch.FloatTensor(X_mala).to(proposal.device)
+        X_mala = latent_transform(X_mala).data.cpu().numpy()
     mode = f'MALA/{acceptance_rule}'
-    params = f'lr = {step_lr}, std noise = {eps_std}'
-    plot_fake_data_mode(X_mala, X_train, mode, path_to_save, 
+    params = f'lr = {grad_step}, std noise = {eps_scale}'
+    plot_fake_data_mode(X_mala, X_train, mode, 
+                        path_to_save = path_to_save, 
                         scaler = scaler,
                         path_to_save_remote = path_to_save_remote,
                         port_to_remote = port_to_remote,
                         params = params)
                         
-def xtry_mala_sampling_visualize(generator, 
-                                 discriminator,
-                                 X_train,  
-                                 path_to_save,
-                                 alpha = 1.0,
-                                 N = 2,
-                                 scaler = None, 
-                                 batch_size_sample = 5000,
-                                 path_to_save_remote = None,
-                                 port_to_remote = None,
-                                 step_lr = 1e-3,
-                                 eps_std = 1e-2,
-                                 n_steps = 5000,
-                                 n_batches = 1):
+def xtry_langevin_sampling_plot_2d(target,
+                                   proposal,
+                                   X_train,  
+                                   path_to_save = None,
+                                   scaler = None, 
+                                   batch_size_sample = 5000,
+                                   path_to_save_remote = None,
+                                   port_to_remote = None,
+                                   N = 2,
+                                   grad_step = 1e-3,
+                                   eps_scale = 1e-2,
+                                   n_steps = 5000,
+                                   n_batches = 1,
+                                   latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_xtry_mala, zs = xtry_mala_sampling(generator, 
-                                         discriminator, 
-                                         alpha, 
-                                         n_steps, 
-                                         step_lr, 
-                                         eps_std,
-                                         N, 
-                                         n=batch_size_sample, 
-                                         batchsize=batchsize)
-    mode = 'X-Try-MALA'
-    params = f'lr = {step_lr}, std noise = {eps_std}, N = {N}'
-    plot_fake_data_mode(X_xtry_mala, X_train, mode, path_to_save, 
+    X_xtry_langevin, zs = xtry_langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, N, batch_size_sample, batchsize)
+    if latent_transform is not None:
+        X_xtry_langevin = torch.FloatTensor(X_xtry_langevin).to(proposal.device)
+        X_xtry_langevin = latent_transform(X_xtry_langevin).data.cpu().numpy()
+    mode = 'X-Try-ULA'
+    params = f'lr = {grad_step}, std noise = {eps_scale}, N = {N}'
+    plot_fake_data_mode(X_xtry_langevin, X_train, mode, 
+                        path_to_save = path_to_save, 
                         scaler = scaler,
                         path_to_save_remote = path_to_save_remote,
                         port_to_remote = port_to_remote,
                         params = params)                        
 
-def mh_sampling_visualize(generator, 
-                          discriminator,
-                          X_train, 
-                          path_to_save,
-                          n_calib_pts = 10000,
-                          scaler = None, 
-                          batch_size_sample = 5000,
-                          path_to_save_remote = None,
-                          port_to_remote = None,
-                          type_calibrator = 'iso',
-                          normalize_to_0_1 = True):
+def mh_sampling_plot_2d(generator, 
+                        discriminator,
+                        X_train, 
+                        path_to_save = None,
+                        n_calib_pts = 10000,
+                        scaler = None, 
+                        batch_size_sample = 5000,
+                        path_to_save_remote = None,
+                        port_to_remote = None,
+                        type_calibrator = 'iso',
+                        normalize_to_0_1 = True):
     if scaler is not None:
        X_train_scale = scaler.transform(X_train)
     else:
@@ -356,7 +341,8 @@ def mh_sampling_visualize(generator,
                        type_calibrator=type_calibrator)
     mode = 'MHGAN'
     params = f'calibrator = {type_calibrator}'
-    plot_fake_data_mode(X_mh, X_train, mode, path_to_save, 
+    plot_fake_data_mode(X_mh, X_train, mode, 
+                        path_to_save = path_to_save, 
                         scaler = scaler,
                         path_to_save_remote = path_to_save_remote,
                         port_to_remote = port_to_remote,
