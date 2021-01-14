@@ -16,6 +16,9 @@ from ebm_sampling import (langevin_sampling,
                           mala_sampling, 
                           xtry_langevin_sampling,
                           gan_energy)
+
+
+figsize=(5,5)
  
 def send_file_to_remote(path_to_file,
                         port_to_remote, 
@@ -38,7 +41,7 @@ def sample_fake_data(generator, X_train,
     fake_data = generator.sampling(batch_size_sample).data.cpu().numpy()
     if scaler is not None:
        fake_data = scaler.inverse_transform(fake_data)
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=figsize)
     plt.xlim(-3., 3.)
     plt.ylim(-3., 3.)
     plt.title("Training and generated samples", fontsize=20)
@@ -69,7 +72,7 @@ def plot_fake_data_mode(fake, X_train, mode,
     #fake_data = fake.data.cpu().numpy()
     if scaler is not None:
        fake = scaler.inverse_transform(fake)
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=figsize)
     plt.xlim(-3., 3.)
     plt.ylim(-3., 3.)
     plt.title(f"Training and {mode} samples", fontsize=20)
@@ -102,7 +105,7 @@ def plot_fake_data_projection(fake, X_train,
        fake = scaler.inverse_transform(fake)
     fake_proj = fake[:, [proj_1, proj_2]]
 
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=figsize)
     plt.xlim(-3., 3.)
     plt.ylim(-3., 3.)
     plt.title(title, fontsize=20)
@@ -164,7 +167,7 @@ def plot_discriminator_2d(discriminator,
     l_y=y_numpy.min()
     r_y=y_numpy.max()
     #small_heatmap = sigmoid_heatmap[:-1, :-1]
-    figure, axes = plt.subplots(figsize=(8, 8))
+    figure, axes = plt.subplots(figsize=figsize)
     z = axes.contourf(x, y, heatmap, 10, cmap='viridis')
     if epoch is not None:
        title = f"Discriminator heatmap, epoch = {epoch}"
@@ -222,7 +225,7 @@ def plot_potential_energy(target_energy,
     l_y=y_numpy.min()
     r_y=y_numpy.max()
     #small_heatmap = sigmoid_heatmap[:-1, :-1]
-    figure, axes = plt.subplots(figsize=(8, 8))
+    figure, axes = plt.subplots(figsize=figsize)
     z = axes.contourf(x, y, result, 10, cmap='viridis')
     axes.set_title(title)
     axes.axis([l_x, r_x, l_y, r_y])
