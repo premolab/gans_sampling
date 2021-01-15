@@ -16,9 +16,6 @@ from ebm_sampling import (langevin_sampling,
                           mala_sampling, 
                           xtry_langevin_sampling,
                           gan_energy)
-
-
-figsize=(5,5)
  
 def send_file_to_remote(path_to_file,
                         port_to_remote, 
