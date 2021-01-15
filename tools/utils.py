@@ -22,64 +22,64 @@ class PoolSet(Dataset):
     def __len__(self):
         return self.len
 
-class Evolution(object):
-    def __init__(self, means, sigma=0.05):
-        self.means = means
-        self.sigma = sigma
-        self.mode_std = []
-        self.high_quality_rate = []
-        self.jsd = []
+# class Evolution(object):
+#     def __init__(self, means, sigma=0.05):
+#         self.means = means
+#         self.sigma = sigma
+#         self.mode_std = []
+#         self.high_quality_rate = []
+#         self.jsd = []
 
-    @staticmethod
-    def make_assignment(X_gen, means, sigma=0.05):
-        n_modes, x_dim = means.shape
-        dists = torch.norm((X_gen[:, None, :] - means[None, :, :]), p=2, dim=-1)
-        assignment = dists < 4 * sigma
-        return assignment
+#     @staticmethod
+#     def make_assignment(X_gen, means, sigma=0.05):
+#         n_modes, x_dim = means.shape
+#         dists = torch.norm((X_gen[:, None, :] - means[None, :, :]), p=2, dim=-1)
+#         assignment = dists < 4 * sigma
+#         return assignment
 
-    @staticmethod
-    def compute_mode_std(X_gen, assignment):
-        """
-        X_gen(torch.FloatTensor) - (n_pts, x_dim)
+#     @staticmethod
+#     def compute_mode_std(X_gen, assignment):
+#         """
+#         X_gen(torch.FloatTensor) - (n_pts, x_dim)
         
-        """
-        x_dim = X_gen.shape[-1]
-        n_modes = assignment.shape[1]
-        std = 0
-        for mode_id in range(n_modes):
-            xs = X_gen[assignment[:, mode_id]]
-            if xs.shape[0] > 1:
-                std_ = (1 / (2**(x_dim - 1) * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
-                std += std_
-        std /= n_modes
-        return std
+#         """
+#         x_dim = X_gen.shape[-1]
+#         n_modes = assignment.shape[1]
+#         std = 0
+#         for mode_id in range(n_modes):
+#             xs = X_gen[assignment[:, mode_id]]
+#             if xs.shape[0] > 1:
+#                 std_ = (1 / (2**(x_dim - 1) * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
+#                 std += std_
+#         std /= n_modes
+#         return std
 
-    @staticmethod
-    def compute_high_quality_rate(assignment):
-        high_quality_rate = assignment.max(1)[0].sum() / float(assignment.shape[0])
-        return high_quality_rate
+#     @staticmethod
+#     def compute_high_quality_rate(assignment):
+#         high_quality_rate = assignment.max(1)[0].sum() / float(assignment.shape[0])
+#         return high_quality_rate
 
-    @staticmethod
-    def compute_jsd(assignment):
-        n_modes = assignment.shape[1]
-        assign_ = torch.cat([assignment, torch.zeros(assignment.shape[0]).unsqueeze(1)], -1)
-        assign_[:, -1][assignment.sum(1) == 0] = 1
-        sample_dist = assign_.sum(dim=0) / float(assign_.shape[0])
-        sample_dist /= sample_dist.sum()
-        uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)] + [0]).to(assignment.device)
-        M = .5 * (uniform_dist + sample_dist)
-        JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)).sum() + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M)).sum()
+#     @staticmethod
+#     def compute_jsd(assignment):
+#         n_modes = assignment.shape[1]
+#         assign_ = torch.cat([assignment, torch.zeros(assignment.shape[0]).unsqueeze(1)], -1)
+#         assign_[:, -1][assignment.sum(1) == 0] = 1
+#         sample_dist = assign_.sum(dim=0) / float(assign_.shape[0])
+#         sample_dist /= sample_dist.sum()
+#         uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)] + [0]).to(assignment.device)
+#         M = .5 * (uniform_dist + sample_dist)
+#         JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)).sum() + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M)).sum()
 
-        return JSD
+#         return JSD
 
-    def invoke(self, X_gen):
-        assignment = Evolution.make_assignment(X_gen, self.means, self.sigma)
-        mode_std = Evolution.compute_mode_std(X_gen, assignment)
-        self.mode_std.append(mode_std.item())
-        h_q_r = Evolution.compute_high_quality_rate(assignment)
-        self.high_quality_rate.append(h_q_r.item())
-        jsd = Evolution.compute_jsd(assignment)
-        self.jsd.append(jsd.item())
+#     def invoke(self, X_gen):
+#         assignment = Evolution.make_assignment(X_gen, self.means, self.sigma)
+#         mode_std = Evolution.compute_mode_std(X_gen, assignment)
+#         self.mode_std.append(mode_std.item())
+#         h_q_r = Evolution.compute_high_quality_rate(assignment)
+#         self.high_quality_rate.append(h_q_r.item())
+#         jsd = Evolution.compute_jsd(assignment)
+#         self.jsd.append(jsd.item())
 
 def prepare_swissroll_data(batch_size=1000):
     data = sklearn.datasets.make_swiss_roll(
