@@ -243,7 +243,7 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance
         propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
         propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
         
-        propose_part = propose_part_2 - propose_part_1
+        propose_part = propose_part_1 - propose_part_2
 
         if acceptance_rule == 'Hastings':
             log_accept_prob = propose_part + energy_part

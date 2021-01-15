@@ -254,7 +254,7 @@ def langevin_sampling_plot_2d(target,
         X_langevin = torch.FloatTensor(X_langevin).to(proposal.device)
         X_langevin = latent_transform(X_langevin).data.cpu().numpy()
     mode = 'ULA'
-    params = f'lr = {grad_step}, std noise = {eps_scale}'
+    params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}'
     plot_fake_data_mode(X_langevin, X_train, mode, 
                         path_to_save = path_to_save, 
                         scaler = scaler,
@@ -282,7 +282,7 @@ def mala_sampling_plot_2d(target,
         X_mala = torch.FloatTensor(X_mala).to(proposal.device)
         X_mala = latent_transform(X_mala).data.cpu().numpy()
     mode = f'MALA/{acceptance_rule}'
-    params = f'lr = {grad_step}, std noise = {eps_scale}'
+    params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}'
     plot_fake_data_mode(X_mala, X_train, mode, 
                         path_to_save = path_to_save, 
                         scaler = scaler,
@@ -310,7 +310,7 @@ def xtry_langevin_sampling_plot_2d(target,
         X_xtry_langevin = torch.FloatTensor(X_xtry_langevin).to(proposal.device)
         X_xtry_langevin = latent_transform(X_xtry_langevin).data.cpu().numpy()
     mode = 'X-Try-ULA'
-    params = f'lr = {grad_step}, std noise = {eps_scale}, N = {N}'
+    params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}, N = {N}'
     plot_fake_data_mode(X_xtry_langevin, X_train, mode, 
                         path_to_save = path_to_save, 
                         scaler = scaler,
