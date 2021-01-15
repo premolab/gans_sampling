@@ -300,22 +300,44 @@ def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N
         X = g_N + eps_scale*noise
         X[np.arange(batch_size), U, :] = y
 
-        X_batch = X.view((batch_size*N, z_dim)).detach().clone()
-        X_batch.requires_grad_(True)
-        minus_log_pi_x, minus_g_log_pi_x = grad_energy(X_batch, target, x=None)
-        T_x = X_batch - grad_step * minus_g_log_pi_x
-        T_x = T_x.reshape(X.shape)
-        minus_log_pi_x = minus_log_pi_x.reshape(X.shape[:-1])
-        log_gauss = -(X[:, None, :] - T_x[:, :, None]).norm(p=2, dim=-1)**2 / (2 * eps_scale**2)
-        sum_log_gauss = log_gauss.sum(1) - torch.diagonal(log_gauss, dim1=1, dim2=2)
+        # X_batch = X.view((batch_size*N, z_dim)).detach().clone()
+        # X_batch.requires_grad_(True)
+        # minus_log_pi_x, minus_g_log_pi_x = grad_energy(X_batch, target, x=None)
+        # T_x = X_batch - grad_step * minus_g_log_pi_x
+        # T_x = T_x.reshape(X.shape)
+        # minus_log_pi_x = minus_log_pi_x.reshape(X.shape[:-1])
+        # log_gauss = -(X[:, None, :] - T_x[:, :, None]).norm(p=2, dim=-1)**2 / (2 * eps_scale**2)
+        # sum_log_gauss = log_gauss.sum(1) - torch.diagonal(log_gauss, dim1=1, dim2=2)
         
+        # log_weight = -minus_log_pi_x + sum_log_gauss
+
+        # max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        # log_weight = log_weight - max_logs
+        # weight = torch.exp(log_weight)
+        # sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
+        # weight = weight/sum_weight
+
+        X_batch = torch.transpose(X, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
+
+        X_batch.requires_grad_(True)
+        minus_log_pi_x, minus_g_log_pi_x = grad_energy(X_batch, target, x=None) #e_grad(X_batch, normal, gen, dis, alpha, e_batch=True, ret_e=True)
+        T_x = X_batch - grad_step * minus_g_log_pi_x
+        T_x = torch.transpose(T_x.reshape(list(X.shape[:-1][::-1]) + [X.shape[-1]]), 0, 1)
+        minus_log_pi_x = minus_log_pi_x.reshape(X.shape[:-1][::-1]).T
+
+        log_gauss = -(X[:, :, None] - T_x[:, None, :]).norm(p=2, dim=-1)**2 / (2 * eps_scale**2)
+        sum_log_gauss = log_gauss.sum(1) - torch.diagonal(log_gauss, dim1=1, dim2=2)
+
         log_weight = -minus_log_pi_x + sum_log_gauss
 
         max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
         log_weight = log_weight - max_logs
         weight = torch.exp(log_weight)
-        sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
-        weight = weight/sum_weight
+        sum_weight = torch.sum(weight, dim = 1)
+        weight = weight/sum_weight[:, None]
+
+        weight[weight != weight] = 0.
+        weight[weight.sum(1) == 0.] = 1.
 
         indices = torch.multinomial(weight, 1).squeeze().tolist()
 
