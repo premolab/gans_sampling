@@ -216,7 +216,7 @@ def langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_
     zs = np.stack(zs, axis=0)
     return z_last_np, zs
     
-def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance_rule='hastings'):
+def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance_rule='Hastings'):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device

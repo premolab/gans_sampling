@@ -16,7 +16,9 @@ from torch import autograd
 
 from paths import (path_to_save_remote, 
                    path_to_save_local,
-                   port_to_remote) 
+                   port_to_remote,
+                   path_to_5d_gaussian_discriminator,
+                   path_to_5d_gaussian_generator) 
 import importlib
 train_jensen = False
 if train_jensen:
@@ -93,6 +95,10 @@ D = Discriminator_fc(n_in=n_dim,
                      device=device).to(device)
 G.init_weights(weights_init_2, random_seed=random_seed)
 D.init_weights(weights_init_2, random_seed=random_seed)
+
+if (path_to_5d_gaussian_discriminator is not None) and (path_to_5d_gaussian_generator is not None):
+   G.load_state_dict(torch.load(path_to_5d_gaussian_generator, map_location=device))
+   D.load_state_dict(torch.load(path_to_5d_gaussian_discriminator, map_location=device))
 
 d_optimizer = torch.optim.Adam(D.parameters(), 
                                betas = betas, 

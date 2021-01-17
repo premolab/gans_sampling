@@ -30,7 +30,9 @@ def send_file_to_remote(path_to_file,
           print(f"Try to send file {path_to_file} to remote server....".format(path_to_file))
           os.system(command)
 
-def sample_fake_data(generator, X_train,  
+def sample_fake_data(generator, X_train, 
+                     x_range,
+                     y_range, 
                      path_to_save = None,
                      epoch = None,
                      scaler = None, 
@@ -40,19 +42,23 @@ def sample_fake_data(generator, X_train,
     fake_data = generator.sampling(batch_size_sample).data.cpu().numpy()
     if scaler is not None:
        fake_data = scaler.inverse_transform(fake_data)
-    plt.figure(figsize=figsize)
-    plt.xlim(-3., 3.)
-    plt.ylim(-3., 3.)
+    plt.figure(figsize=(8, 8))
+    plt.xlim(-x_range, x_range)
+    plt.ylim(-y_range, y_range)
     plt.title("Training and generated samples", fontsize=20)
-    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.2, color='gray', 
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
                 marker='o', label = 'training samples')
-    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.2, color='blue', 
+    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.5, color='blue', 
                 marker='o', label = 'samples by G')
     plt.legend()
     plt.grid(True)
-    if (path_to_save is not None) and (epoch is not None):
+    if path_to_save is not None:
        cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-       plot_name = cur_time + f'_gan_sampling_{epoch}_epoch.pdf'
+       if epoch is not None:
+          plot_name = cur_time + f'_gan_sampling_{epoch}_epoch.pdf'
+       else:
+          plot_name = cur_time + f'_gan_sampling.pdf'
+
        path_to_plot = os.path.join(path_to_save, plot_name)
        plt.savefig(path_to_plot)
        send_file_to_remote(path_to_plot,
@@ -75,12 +81,12 @@ def plot_fake_data_mode(fake, X_train, mode,
     plt.xlim(-3., 3.)
     plt.ylim(-3., 3.)
     plt.title(f"Training and {mode} samples", fontsize=20)
-    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.2, color='gray', 
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.3, color='gray', 
                 marker='o', label = 'training samples')
     label = f'{mode} samples'
     if params is not None:
        label += (', ' + params)
-    plt.scatter(fake[:,:1], fake[:,1:], alpha=0.2, color='blue', 
+    plt.scatter(fake[:,:1], fake[:,1:], alpha=0.3, color='blue', 
                 marker='o', label = label)
     plt.legend()
     plt.grid(True)
@@ -110,9 +116,9 @@ def plot_fake_data_projection(fake, X_train,
     plt.title(title, fontsize=20)
     X_train_proj = X_train[:, [proj_1, proj_2]]
 
-    plt.scatter(X_train_proj[:, 0], X_train_proj[:, 1], alpha=0.2, color='gray',
+    plt.scatter(X_train_proj[:, 0], X_train_proj[:, 1], alpha=0.3, color='gray',
                 marker='o', label = 'training samples')
-    plt.scatter(fake_proj[:, 0], fake_proj[:, 1], alpha=0.2, color='blue',
+    plt.scatter(fake_proj[:, 0], fake_proj[:, 1], alpha=0.3, color='blue',
                 marker='o', label = fake_label)
     plt.xlabel(f"proj ind = {proj_1 + 1}")
     plt.ylabel(f"proj ind = {proj_2 + 1}")
@@ -391,9 +397,13 @@ def epoch_visualization(X_train,
         axs[0].legend()
         axs[1].legend()
         fig.savefig(path_to_plot)
-        if mode == '25_gaussians':
-            x_range = 3.0
-            y_range = 3.0
+        if (mode in ['25_gaussians', 'swissroll']):
+            if mode == '25_gaussians':
+               x_range = 3.0
+               y_range = 3.0
+            else:
+               x_range = 2.0
+               y_range = 2.0
             plot_name = cur_time + f'_discriminator_{epoch}_epoch.pdf'
             path_to_plot_discriminator = os.path.join(path_to_save, plot_name)
             discriminator_2d_visualization(discriminator,
@@ -408,22 +418,31 @@ def epoch_visualization(X_train,
                mh_mode = 'mhgan'
                plot_name = cur_time + f'_{mh_mode}_sampling.pdf'
                path_to_plot_mhgan = os.path.join(path_to_save, plot_name)
+              
+               type_calibrator = 'iso'
                mh_sampling_visualize(generator, 
                                      discriminator,
-                                     X_train, epoch, 
+                                     X_train,  
                                      path_to_plot_mhgan,
                                      n_calib_pts = n_calib_pts,
                                      scaler = scaler, 
                                      batch_size_sample = batch_size_sample,
                                      port_to_remote=port_to_remote,
                                      path_to_save_remote = path_to_save_remote,
-                                     normalize_to_0_1 = normalize_to_0_1)
+                                     normalize_to_0_1 = normalize_to_0_1,
+                                     type_calibrator = type_calibrator)
 
-            sample_fake_data(generator, X_train, epoch, path_to_save, 
+            sample_fake_data(generator, X_train,
+                             x_range,
+                             y_range,  
+                             path_to_save,
+                             epoch=epoch, 
                              scaler=scaler,
                              batch_size_sample=batch_size_sample,
                              port_to_remote=port_to_remote, 
                              path_to_save_remote=path_to_save_remote)
+        
+        
 
         elif mode == '5d_gaussians':
             fake_generator = generator.sampling(batch_size_sample).data.cpu().numpy()

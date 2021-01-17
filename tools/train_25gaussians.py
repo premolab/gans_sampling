@@ -17,32 +17,39 @@ from torch import autograd
 from paths import (path_to_save_remote, 
                    path_to_save_local,
                    port_to_remote) 
+import importlib
+train_jensen = False
+if train_jensen:
+   module_name =  'params_25gaussians'
+else:
+   module_name =  'params_25gaussians_wasserstein' 
 
-from params_25gaussians import (random_seed,
-                                train_dataset_size,
-                                batch_size,
-                                sigma, 
-                                n_dim,
-                                n_layers_d,
-                                n_layers_g,
-                                n_hid_d,
-                                n_hid_g,
-                                n_out,
-                                normalize_to_0_1,
-                                loss_type,
-                                lr_init,
-                                betas,
-                                use_gradient_penalty,
-                                Lambda,
-                                num_epochs,
-                                num_epoch_for_save,
-                                batch_size_sample,
-                                k_g,
-                                k_d,
-                                mode,
-                                n_calib_pts,
-                                plot_mhgan,
-                                device)
+params_module = importlib.import_module(module_name)
+random_seed = params_module.random_seed
+batch_size = params_module.batch_size
+train_dataset_size = params_module.train_dataset_size
+sigma = params_module.sigma
+n_dim = params_module.n_dim
+n_layers_d = params_module.n_layers_d
+n_layers_g = params_module.n_layers_g
+n_hid_d = params_module.n_hid_d
+n_hid_g = params_module.n_hid_g
+n_out = params_module.n_out
+normalize_to_0_1 = params_module.normalize_to_0_1
+loss_type = params_module.loss_type
+lr_init = params_module.lr_init
+betas = params_module.betas
+use_gradient_penalty = params_module.use_gradient_penalty
+Lambda = params_module.Lambda
+num_epochs = params_module.num_epochs
+num_epoch_for_save = params_module.num_epoch_for_save
+batch_size_sample = params_module.batch_size_sample
+k_g = params_module.k_g
+k_d = params_module.k_d
+mode = params_module.mode
+n_calib_pts = params_module.n_calib_pts
+plot_mhgan = params_module.plot_mhgan
+device = params_module.device
 
 from utils import (prepare_25gaussian_data, 
                    prepare_train_batches,
