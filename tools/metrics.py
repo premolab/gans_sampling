@@ -68,9 +68,10 @@ class Evolution(object):
         """
         x_dim = X_gen.shape[-1]
         n_modes = assignment.shape[1]
-        std = 0
+        std = torch.FloatTensor([0.0])
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
+            #print(xs.shape)
             if xs.shape[0] > 1:
                 std_ = (1 / (2**(x_dim - 1) * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
                 std += std_
@@ -113,7 +114,9 @@ class Evolution(object):
         
         if self.locs is not None and self.sigma is not None:
             assignment = Evolution.make_assignment(X_gen, self.locs, self.sigma)
+            #print(assignment.shape)
             mode_std = Evolution.compute_mode_std(X_gen, assignment)
+            #print(mode_std)
             self.mode_std.append(mode_std.item())
             h_q_r = Evolution.compute_high_quality_rate(assignment)
             self.high_quality_rate.append(h_q_r.item())
@@ -151,10 +154,11 @@ class Evolution(object):
         return d
 
 
-def plot_chain_metrics(every=50, savepath=None, sigma=0.05, **evols):
+def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
     fig, axs = plt.subplots(ncols=4, nrows=1, figsize=(25, 6))
 
-
+    if name is not None:
+        fig.suptitle(name)
     if sigma is not None:
         axs[0].axhline(sigma, label='real', color='black')
         axs[0].set_xlabel('iter')
