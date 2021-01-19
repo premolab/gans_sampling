@@ -1,6 +1,7 @@
 import numpy as np
 import torch, torch.nn as nn
 import torch.nn.functional as F
+import random
 
 from distributions import (Target, 
                            Gaussian_mixture, 
@@ -118,8 +119,10 @@ def run_experiments_gaussians(dim_arr,
                                                 method_params['N'])
           else:
              raise ValueError('Unknown method')    
-          result = history[(-num_points_in_chain - 1):-1]
-          result_np = torch.stack(result, axis = 0).cpu().numpy()
+          last_history = history[(-num_points_in_chain - 1):-1]
+          all_history_np = torch.stack(history, axis = 0).cpu().numpy()
+
+          result_np = torch.stack(last_history, axis = 0).cpu().numpy()
           if strategy_mean == 'starts':
              result_var = np.var(result_np, axis = 1, ddof=1).mean(axis = 0).mean()
              result_mean = np.mean(result_np, axis = 1).mean(axis = 0).mean()
@@ -139,8 +142,8 @@ def run_experiments_gaussians(dim_arr,
           diff = (result_np_1 == result_np_2).sum(axis = 2)
           ess_bs = (diff != dim).mean(axis = 0)
           ess = ess_bs.mean()
-          first_coord_history = result_np[:, :, 0]
-          norm_history = np.linalg.norm(result_np, axis = -1)
+          first_coord_history = all_history_np[:, :, 0]
+          norm_history = np.linalg.norm(all_history_np, axis = -1)
           
           if print_results:
              print(f"mean estimation of variance = {result_var}")
