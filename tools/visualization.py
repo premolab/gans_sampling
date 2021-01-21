@@ -11,6 +11,8 @@ import itertools
 import torch
 from torch.distributions import Normal
 
+from utils import send_file_to_remote
+
 from mh_sampling import mh_sampling
 from ebm_sampling import (langevin_sampling, 
                           mala_sampling, 
@@ -19,17 +21,6 @@ from ebm_sampling import (langevin_sampling,
 
 figsize=(8,8)
  
-def send_file_to_remote(path_to_file,
-                        port_to_remote, 
-                        path_to_save_remote):
-   if (port_to_remote is not None) and (path_to_save_remote is not None):
-          command = f'scp -P {port_to_remote} '.format(port_to_remote)
-          command += path_to_file
-          command += ' localhost:'
-          command += path_to_save_remote
-          print(f"Try to send file {path_to_file} to remote server....".format(path_to_file))
-          os.system(command)
-
 def sample_fake_data(generator, X_train, 
                      x_range,
                      y_range, 
