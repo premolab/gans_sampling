@@ -126,7 +126,7 @@ class IndependentNormal(Target):
         return density
 
     def log_prob(self, z, x=None):
-        log_density = (self.distribution.log_prob(z.to(self.device))).sum(dim=1)
+        log_density = (self.distribution.log_prob(z.to(self.device))).sum(dim=-1)
         return log_density
     
     def sample(self, n):
@@ -135,8 +135,8 @@ class IndependentNormal(Target):
     def energy(self, z, x=None):
         return -self.log_prob(z, x)
         
-def init_independent_normal(scale, n_dim, device):
-    loc = torch.zeros(n_dim).to(device)
+def init_independent_normal(scale, n_dim, device, loc = 0.0):
+    loc = loc*torch.ones(n_dim).to(device)
     scale = scale*torch.ones(n_dim).to(device)
     target_args = DotDict()
     target_args.device = device
