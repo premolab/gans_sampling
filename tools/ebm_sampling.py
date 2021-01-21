@@ -39,7 +39,9 @@ def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob
         gan_part = -(torch.log(sigmoid_gan_part) - \
                      torch.log1p(-sigmoid_gan_part)).view(-1)
         
-    proposal_part = -torch.sum(proposal.log_prob(z), dim=1)
+    proposal_part = -proposal.log_prob(z)
+    #print(proposal_part.shape)
+    #print(gan_part.shape)
     energy = gan_part + proposal_part
     if not log_prob:
        return energy

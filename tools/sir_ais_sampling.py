@@ -8,10 +8,10 @@ from distributions import (Target,
                            IndependentNormal,
                            init_independent_normal)
 
-def compute_sir_weights(x):
-    return (-x.norm(p=2, dim=-1)**2 / 4.0).exp()
+def compute_sir_log_weights(x, target, proposal):
+    return target.log_prob(x) -  proposal.log_prob(x)
 
-def sir_independent_dynamics(z, proposal, n_steps, N):
+def sir_independent_dynamics(z, target, proposal, n_steps, N):
     z_sp = []
     batch_size, z_dim = z.shape[0], z.shape[1]
 
@@ -21,7 +21,10 @@ def sir_independent_dynamics(z, proposal, n_steps, N):
         X = proposal.sample([batch_size, N])
         X[np.arange(batch_size), U, :] = z
         
-        weight = compute_sir_weights(X)
+        log_weight = compute_sir_log_weights(X, target, proposal)
+        max_logs = torch.max(log_weight, dim = 1)[0][:, None]
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
         sum_weight = torch.sum(weight, dim = 1)
         weight = weight/sum_weight[:, None]
         
@@ -36,27 +39,27 @@ def sir_independent_dynamics(z, proposal, n_steps, N):
     z_sp.append(z)
     return z_sp
     
-def sir_correlated_dynamics(z, sigma_proposal, n_steps, N, alpha):
+def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
     z_sp = []
     batch_size, z_dim = z.shape[0], z.shape[1]
-    scale = 1.0
-    normal = init_independent_normal(scale, z_dim, z.device)
 
     for _ in range(n_steps):
         z_sp.append(z)
         z_copy = z.unsqueeze(1).repeat(1, N, 1)
         ind = torch.randint(0, N, (batch_size,)).tolist()
-        W = normal.sample([batch_size, N])
-        U = normal.sample([batch_size]).unsqueeze(1).repeat(1, N, 1)
+        W = proposal.sample([batch_size, N])
+        U = proposal.sample([batch_size]).unsqueeze(1).repeat(1, N, 1)
         #print(W.shape, U.shape, z_copy.shape)
         X = torch.zeros((batch_size, N, z_dim), dtype = z.dtype).to(z.device)
-        X =  (alpha**2)*z_copy + alpha*((1- alpha**2)**0.5)*sigma_proposal*U + W*sigma_proposal*((1- alpha**2)**0.5)
+        X =  (alpha**2)*z_copy + alpha*((1- alpha**2)**0.5)*U + W*((1- alpha**2)**0.5)
         X[np.arange(batch_size), ind, :] = z
         
-        
-        weight = compute_sir_weights(X)
+        log_weight = compute_sir_log_weights(X, target, proposal)
+        max_logs = torch.max(log_weight, dim = 1)[0][:, None]
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
         sum_weight = torch.sum(weight, dim = 1)
-        weight = weight/sum_weight[:, None]
+        weight = weight/sum_weight[:, None]        
         
         weight[weight != weight] = 0.
         weight[weight.sum(1) == 0.] = 1.
@@ -108,12 +111,14 @@ def run_experiments_gaussians(dim_arr,
           if method == 'sir_correlated':
              alpha = (1 - method_params['c']/dim)**0.5
              history = sir_correlated_dynamics(start, 
-                                               method_params['scale_proposal'], 
+                                               target,
+                                               proposal, 
                                                method_params['n_steps'], 
                                                method_params['N'],
                                                alpha)
           elif method == 'sir_independent':
              history = sir_independent_dynamics(start, 
+                                                target,
                                                 proposal, 
                                                 method_params['n_steps'], 
                                                 method_params['N'])
@@ -126,9 +131,6 @@ def run_experiments_gaussians(dim_arr,
           if strategy_mean == 'starts':
              result_var = np.var(result_np, axis = 1, ddof=1).mean(axis = 0).mean()
              result_mean = np.mean(result_np, axis = 1).mean(axis = 0).mean()
-             diff = (result_np_1 == result_np_2).sum(axis = 1)
-             num_new = (diff != dim).sum()
-             ess = num_new/diff.shape[0]
               
           elif strategy_mean == 'chain':
              result_var = np.var(result_np, axis = 0, ddof=1).mean(axis = 0).mean()
