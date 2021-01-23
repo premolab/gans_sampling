@@ -55,7 +55,7 @@ def sample_fake_data(generator, X_train,
        send_file_to_remote(path_to_plot,
                            port_to_remote, 
                            path_to_save_remote)
-
+       plt.close()
     else:
        plt.show()
 
@@ -86,6 +86,7 @@ def plot_fake_data_mode(fake, X_train, mode,
        send_file_to_remote(path_to_save,
                            port_to_remote, 
                            path_to_save_remote)
+       plt.close()
     else:
        plt.show()
 
@@ -120,7 +121,7 @@ def plot_fake_data_projection(fake, X_train,
        send_file_to_remote(path_to_save,
                            port_to_remote, 
                            path_to_save_remote)
-
+       plt.close()
     else:
        plt.show()
 
@@ -177,6 +178,7 @@ def plot_discriminator_2d(discriminator,
        send_file_to_remote(path_to_save,
                            port_to_remote, 
                            path_to_save_remote)
+       plt.close()
 
 def plot_potential_energy(target_energy,
                           x_range,
