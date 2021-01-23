@@ -20,6 +20,8 @@ from pyro.infer import MCMC, NUTS, HMC
 
 from functools import partial
 from tqdm import tqdm
+from easydict import EasyDict as edict
+
     
 def grad_energy(point, target, x=None):
     point = point.detach().requires_grad_()
@@ -40,8 +42,9 @@ def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob
                      torch.log1p(-sigmoid_gan_part)).view(-1)
         
     proposal_part = -proposal.log_prob(z)
-    #print(proposal_part.shape)
-    #print(gan_part.shape)
+    # print(z.shape)
+    # print(proposal_part.shape)
+    # print(gan_part.shape)
     energy = gan_part + proposal_part
     if not log_prob:
        return energy
@@ -220,6 +223,89 @@ def xtry_langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, N, n
         z = proposal.sample([batch_size])
         z.requires_grad_(True)
         z_sp = xtry_langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N)
+        last = z_sp[-1].data.cpu().numpy()
+        z_last.append(last)
+        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
+
+    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
+    zs = np.stack(zs, axis=0)
+    return z_last_np, zs
+
+
+def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, *betas):
+    z_sp = [z.clone().detach()]
+    batch_size, z_dim = z.shape[0], z.shape[1]
+    device = z.device
+
+    uniform = Uniform(low = 0.0, high = 1.0)
+
+    loc = torch.zeros(z_dim).to(device)
+    scale = torch.ones(z_dim).to(device)
+    dist_args = edict()
+    dist_args.device = device
+    dist_args.loc = loc
+    dist_args.scale = scale
+    stand_normal = IndependentNormal(dist_args)
+
+    acceptence = torch.zeros(batch_size).to(device)
+
+    betas = np.array(betas)
+    betas_diff = torch.FloatTensor(betas[:-1] - betas[1:])
+
+    for _ in range(n_steps):
+        z_forward = z.clone().detach()
+        z_forward.requires_grad_(True)
+        energy_forward = torch.zeros(batch_size, len(betas))
+        
+        for i, beta in enumerate(betas):
+            eps = eps_scale * proposal.sample([batch_size])
+            E, grad = grad_energy(z_forward, target, x=None)
+            
+            z_forward = z_forward - grad_step * beta * grad + eps
+            z_forward = z_forward.data
+            z_forward.requires_grad_(True)
+            energy_forward[:, i] = E
+
+        z_backward = z_forward.clone().detach()
+        z_backward.requires_grad_(True)
+        energy_backward = torch.zeros(batch_size, len(betas))
+        for beta in betas[::-1]:
+            eps = eps_scale * proposal.sample([batch_size])
+            E, grad = grad_energy(z_backward, target, x=None)
+            
+            z_backward = z_backward + grad_step * beta * grad + eps
+            z_backward = z_backward.data
+            z_backward.requires_grad_(True)
+            energy_backward[:, i] = E
+
+        energy_backward = torch.flip(energy_backward, dims=(1,))
+
+        F_forward = (betas_diff * energy_forward[:, :-1]).sum(-1)
+        F_backward = (betas_diff * energy_backward[:, :-1]).sum(-1)
+        log_accept_prob = F_forward - F_backward
+        
+        generate_uniform_var = uniform.sample([batch_size]).to(z.device)
+        log_generate_uniform_var = torch.log(generate_uniform_var)
+        mask = log_generate_uniform_var < log_accept_prob
+        
+        acceptence += mask
+        with torch.no_grad():
+            z[mask] = z_backward[mask].detach().clone()
+            z = z.data
+            z.requires_grad_(True)
+            z_sp.append(z.clone().detach())
+        
+    return z_sp, acceptence
+
+
+def tempered_transitions_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, betas):
+    z_last = []
+    zs = []
+    z = proposal.sample([batch_size])
+    for i in tqdm(range(0, n, batch_size)):
+        z = proposal.sample([batch_size])
+        z.requires_grad_(True)
+        z_sp, acceptence = tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, *betas)
         last = z_sp[-1].data.cpu().numpy()
         z_last.append(last)
         zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
