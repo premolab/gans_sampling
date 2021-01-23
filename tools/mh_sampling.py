@@ -190,7 +190,7 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
     scores_real_df = validate_scores(scores_real)
     n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
     if rem != 0:
-       raise TypeError('Number calibration points must be divisible by batch size')    
+       raise ValueError('Number calibration points must be divisible by batch size')    
 
     n_dim = X_train.shape[1]
 

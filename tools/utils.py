@@ -10,6 +10,18 @@ import torch
 from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 
+class DotDict(dict):
+    """
+    a dictionary that supports dot notation
+    as well as dictionary access notation
+    usage: d = DotDict() or d = DotDict({'val1':'first'})
+    set attributes: d.val2 = 'second' or d['val2'] = 'second'
+    get attributes: d.val2 or d['val2']
+    """
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
 class PoolSet(Dataset):
     def __init__(self, p_x):
         ## input: torch.tensor (NOT CUDA TENSOR)
@@ -21,65 +33,6 @@ class PoolSet(Dataset):
     
     def __len__(self):
         return self.len
-
-# class Evolution(object):
-#     def __init__(self, means, sigma=0.05):
-#         self.means = means
-#         self.sigma = sigma
-#         self.mode_std = []
-#         self.high_quality_rate = []
-#         self.jsd = []
-
-#     @staticmethod
-#     def make_assignment(X_gen, means, sigma=0.05):
-#         n_modes, x_dim = means.shape
-#         dists = torch.norm((X_gen[:, None, :] - means[None, :, :]), p=2, dim=-1)
-#         assignment = dists < 4 * sigma
-#         return assignment
-
-#     @staticmethod
-#     def compute_mode_std(X_gen, assignment):
-#         """
-#         X_gen(torch.FloatTensor) - (n_pts, x_dim)
-        
-#         """
-#         x_dim = X_gen.shape[-1]
-#         n_modes = assignment.shape[1]
-#         std = 0
-#         for mode_id in range(n_modes):
-#             xs = X_gen[assignment[:, mode_id]]
-#             if xs.shape[0] > 1:
-#                 std_ = (1 / (2**(x_dim - 1) * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
-#                 std += std_
-#         std /= n_modes
-#         return std
-
-#     @staticmethod
-#     def compute_high_quality_rate(assignment):
-#         high_quality_rate = assignment.max(1)[0].sum() / float(assignment.shape[0])
-#         return high_quality_rate
-
-#     @staticmethod
-#     def compute_jsd(assignment):
-#         n_modes = assignment.shape[1]
-#         assign_ = torch.cat([assignment, torch.zeros(assignment.shape[0]).unsqueeze(1)], -1)
-#         assign_[:, -1][assignment.sum(1) == 0] = 1
-#         sample_dist = assign_.sum(dim=0) / float(assign_.shape[0])
-#         sample_dist /= sample_dist.sum()
-#         uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)] + [0]).to(assignment.device)
-#         M = .5 * (uniform_dist + sample_dist)
-#         JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)).sum() + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M)).sum()
-
-#         return JSD
-
-#     def invoke(self, X_gen):
-#         assignment = Evolution.make_assignment(X_gen, self.means, self.sigma)
-#         mode_std = Evolution.compute_mode_std(X_gen, assignment)
-#         self.mode_std.append(mode_std.item())
-#         h_q_r = Evolution.compute_high_quality_rate(assignment)
-#         self.high_quality_rate.append(h_q_r.item())
-#         jsd = Evolution.compute_jsd(assignment)
-#         self.jsd.append(jsd.item())
 
 def prepare_swissroll_data(batch_size=1000):
     data = sklearn.datasets.make_swiss_roll(
@@ -166,3 +119,14 @@ def logging(path_to_logs, mode, train_dataset_size,
     f.write(f"Number of discriminator learning passes = {k_d}\n")
     f.write(f"-------------------------------------------\n")
     f.close()
+
+def send_file_to_remote(path_to_file,
+                        port_to_remote, 
+                        path_to_save_remote):
+   if (port_to_remote is not None) and (path_to_save_remote is not None):
+          command = f'scp -P {port_to_remote} '.format(port_to_remote)
+          command += path_to_file
+          command += ' localhost:'
+          command += path_to_save_remote
+          print(f"Try to send file {path_to_file} to remote server....".format(path_to_file))
+          os.system(command)

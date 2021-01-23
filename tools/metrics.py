@@ -4,7 +4,7 @@ from scipy.stats import gaussian_kde
 from sklearn import mixture
 import ot
 from matplotlib import pyplot as plt
-
+from scipy.stats import chi2
 
 @torch.no_grad()
 def get_pis_estimate(X_gen, target_log_prob, n_pts=4000, sample_method='grid', density_method='gmm'):
@@ -54,10 +54,12 @@ class Evolution(object):
         self.l2_div = []
 
     @staticmethod
-    def make_assignment(X_gen, locs, sigma=0.05):
+    def make_assignment(X_gen, locs, sigma=0.05, q=0.95):
         n_modes, x_dim = locs.shape
         dists = torch.norm((X_gen[:, None, :] - locs[None, :, :]), p=2, dim=-1)
-        assignment = dists < 4 * sigma
+        chi2_quantile = chi2.ppf(q, x_dim)
+        test_dist = (chi2_quantile * (sigma**2))**0.5
+        assignment = dists < test_dist
         return assignment
 
     @staticmethod
@@ -68,14 +70,36 @@ class Evolution(object):
         """
         x_dim = X_gen.shape[-1]
         n_modes = assignment.shape[1]
-        std = 0
+        std = torch.FloatTensor([0.0])
+        found_modes = 0
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
+            #print(xs.shape)
             if xs.shape[0] > 1:
-                std_ = (1 / (2**(x_dim - 1) * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
+                std_ = (1 / (x_dim * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
                 std += std_
-        std /= n_modes
+                found_modes += 1
+        std /= found_modes
         return std
+
+    @staticmethod
+    def compute_mode_mean(X_gen, assignment):
+        """
+        X_gen(torch.FloatTensor) - (n_pts, x_dim)
+
+        """
+        x_dim = X_gen.shape[-1]
+        n_modes = assignment.shape[1]
+        means = torch.zeros((n_modes, x_dim))
+        found_modes_ind = []
+        for mode_id in range(n_modes):
+            xs = X_gen[assignment[:, mode_id]]
+            #print(xs.shape)
+            if xs.shape[0] > 1:
+                means[mode_id] = xs.mean(0)
+                found_modes_ind.append(mode_id)
+
+        return means, found_modes_ind    
 
     @staticmethod
     def compute_high_quality_rate(assignment):
@@ -113,7 +137,9 @@ class Evolution(object):
         
         if self.locs is not None and self.sigma is not None:
             assignment = Evolution.make_assignment(X_gen, self.locs, self.sigma)
+            #print(assignment.shape)
             mode_std = Evolution.compute_mode_std(X_gen, assignment)
+            #print(mode_std)
             self.mode_std.append(mode_std.item())
             h_q_r = Evolution.compute_high_quality_rate(assignment)
             self.high_quality_rate.append(h_q_r.item())
@@ -151,10 +177,11 @@ class Evolution(object):
         return d
 
 
-def plot_chain_metrics(every=50, savepath=None, sigma=0.05, **evols):
+def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
     fig, axs = plt.subplots(ncols=4, nrows=1, figsize=(25, 6))
 
-
+    if name is not None:
+        fig.suptitle(name)
     if sigma is not None:
         axs[0].axhline(sigma, label='real', color='black')
         axs[0].set_xlabel('iter')

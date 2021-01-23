@@ -229,6 +229,14 @@ def train_gan(X_train,
               
                   torch.save(discriminator.state_dict(), path_to_discriminator)
                   torch.save(generator.state_dict(), path_to_generator)
+
+                  discriminator_optimizer_name = cur_time + '_opt_discriminator.pth'
+                  generator_optimizer_name = cur_time + '_opt_generator.pth'
+                  path_to_opt_discriminator = os.path.join(path_to_models, discriminator_optimizer_name)
+                  path_to_opt_generator = os.path.join(path_to_models, generator_optimizer_name)
+
+                  torch.save(d_optimizer.state_dict(), path_to_opt_discriminator)
+                  torch.save(g_optimizer.state_dict(), path_to_opt_generator)
                 
     except KeyboardInterrupt:
         pass
