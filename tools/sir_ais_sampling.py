@@ -11,6 +11,7 @@ from distributions import (Target,
 
 from utils import DotDict
 from metrics import Evolution
+from ebm_sampling import grad_energy
 
 def compute_sir_log_weights(x, target, proposal):
     return target.log_prob(x) -  proposal.log_prob(x)
@@ -80,7 +81,249 @@ def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
 
     z_sp.append(z)
     return z_sp
+
+def compute_log_probs(point1, point2, target, proposal, beta, grad_step, eps_scale):
+    E_point1, grad_point1 = grad_energy(point1, target, x=None)
+    E_point2, grad_point2 = grad_energy(point2, target, x=None)
     
+    energy_part = beta*(E_point1 - E_point2)
+    
+    propose_vec_1 = point1 - (1. - grad_step)*point2 + grad_step*beta*point2
+    propose_vec_2 = point2 - (1. - grad_step)*point1 + grad_step*beta*grad_point1
+    
+    propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
+    propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
+    propose_part = propose_part_1 - propose_part_2
+    
+    log_probs = propose_part + energy_part
+    return (E_point1.detach().clone(), 
+            grad_point1.detach().clone(), 
+            E_point2.detach().clone(), 
+            grad_point2.detach().clone(), 
+            log_probs.detach().clone())
+
+def compute_probs_from_log_probs(log_probs):
+    mask_zeros = log_probs > 0.
+    num_big_zeros = mask_zeros.sum().item()
+    log_probs[mask_zeros] = torch.zeros(num_big_zeros, 
+                                        dtype = log_probs.dtype).to(log_probs.device)
+    probs = log_probs.exp()
+    return probs
+    
+def ais_dynamics(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_scale):
+    #z - tensor (bs, T + 1, dim)
+    z_sp = []
+    batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
+    T = T - 1
+    uniform = Uniform(low = 0.0, high = 1.0)
+    
+    for _ in range(n_steps):
+        #print(f"iter = {_}")
+        z_sp.append(z.detach().clone())
+        v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
+        u = torch.zeros((batch_size, T + 1, N), dtype = z.dtype).to(z.device)
+        #print("step1")
+        #step 1
+        for t in range(1, T + 1):
+            #print(f"t = {t}")
+            not_equal_mask = (torch.norm(z[:, t, :] - z[:, t - 1, :], p=2, dim=-1) > 1e-13)
+            equal_mask = ~not_equal_mask             
+            
+            num_not_equal = not_equal_mask.sum()
+            num_equal = equal_mask.sum()
+            #print(f"num_not_equal = {num_not_equal}")
+            #print(f"num_equal = {num_equal}")
+            
+            if num_not_equal > 0:
+                #print(f"start to do updates for not equal batches")
+                z_t_not_equal = z[not_equal_mask, t, :].detach().clone()
+                z_t_1_not_equal = z[not_equal_mask, t - 1, :].detach().clone()
+                #print(z_t_not_equal.shape)
+                z_t_not_equal.requires_grad_(True)
+                z_t_1_not_equal.requires_grad_(True)
+                
+                E_point1, grad_point1, E_point2, grad_point2, log_probs = compute_log_probs(z_t_1_not_equal, 
+                                                                                            z_t_not_equal, 
+                                                                                            target, 
+                                                                                            proposal, 
+                                                                                            betas[t], 
+                                                                                            grad_step, 
+                                                                                            eps_scale)
+
+                v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step)*z_t_1_not_equal \
+                                                            + grad_step*betas[t]*grad_point1)/eps_scale
+                #print(log_probs.shape)
+                probs = compute_probs_from_log_probs(log_probs)
+                generate_uniform_var = uniform.sample([probs.shape[0]]).to(probs.device)
+                weight_uniform_var = generate_uniform_var * probs
+
+                u[not_equal_mask, t, 0] = weight_uniform_var
+            
+            if num_equal > 0:
+                #print(f"start to do updates for equal batches")
+                z_t_equal = z[equal_mask, t, :]
+                z_t_1_equal = z[equal_mask, t - 1, :].detach().clone()
+                z_t_1_equal.requires_grad_(True)
+                
+                E_t_1_equal, grad_t_1_equal = grad_energy(z_t_1_equal, target, x=None)
+                second_part_no_noise = (1. - grad_step)*z_t_1_equal - grad_step*betas[t]*grad_t_1_equal
+
+                stop = False
+                num_updates = 0
+                update_mask = torch.zeros(num_equal, dtype = torch.bool).to(z_t_equal.device)
+                #print(f"update_mask.sum() = {updates_num}")
+                z_t_1_equal = z_t_1_equal.detach().clone()
+                z_t_1_equal.requires_grad_(True)
+                #print("start to while sampling")
+                while not stop:
+                    cur_u = uniform.sample([num_equal]).to(z_t_equal.device)
+                    cur_v = proposal.sample([num_equal]).to(z_t_equal.device)
+                    second_part = second_part_no_noise + cur_v*eps_scale
+                    second_part = second_part.detach().clone()
+                    second_part.requires_grad_(True)
+                    
+                    _, _, _, _, log_probs = compute_log_probs(z_t_1_equal, 
+                                                              second_part, 
+                                                              target, 
+                                                              proposal, 
+                                                              betas[t], 
+                                                              grad_step, 
+                                                              eps_scale)
+                    probs = compute_probs_from_log_probs(log_probs)
+                    mask_assign = (cur_u > probs)
+                    new_assign = torch.logical_and(mask_assign, ~update_mask) 
+                    #print(new_assign.shape)
+                    #print(u.shape)
+                    #print(cur_u.shape)
+                    
+                    u[equal_mask, t, 0][new_assign] = cur_u[new_assign]
+                    v[equal_mask, t, 0, :][new_assign] = cur_v[new_assign]
+                    
+                    
+                    update_mask = torch.logical_or(update_mask, new_assign)
+                    updates_num = update_mask.sum()
+                    
+                    #print(f"update_mask = {updates_num}")
+                    
+                    
+                    if updates_num == num_equal:
+                        stop = True
+                    
+        #print("end step 1")   
+        #print("step2")
+        #step 2
+        W = proposal.sample([batch_size, N - 1])
+        #Z - tensor (bs, T + 1, N, dim)
+        Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
+        z_repeat = z[:, 0, :].unsqueeze(1).repeat(1, N - 1, 1)
+        #print(z_repeat.shape)
+        #print(W.shape)
+        Z[:, :, 0, :] = z
+        Z[:, 0, 1:, :] = p0*z_repeat + ((1 - p0**2)**0.5) * W
+        
+        v_repeat = v[:, :, 0, :].unsqueeze(2).repeat(1, 1, N - 1, 1)
+        W_2 = proposal.sample([batch_size, T, N - 1])
+        
+        for t in range(1, T + 1):
+            #print(f"t = {t}")
+            v[:, t, 1:, :] = p*v_repeat[:, t, :, :] + ((1 - p**2)**0.5) * W_2[:, t - 1, :, :]
+            v_t_shape = v[:, t, 1:, :].shape
+            v_t_j_flatten = v[:, t, 1:, :].reshape(-1, z_dim).detach().clone()
+            v_t_j_flatten.requires_grad_(True)
+            
+            E_v_t_j_flatten, grad_v_t_j_flatten = grad_energy(v_t_j_flatten, target, x=None)
+            grad_v_t_j = grad_v_t_j_flatten.reshape(v_t_shape)
+            p_t_j = (1. - grad_step)*v[:, t, 1:, :] - grad_step*betas[t]*grad_v_t_j \
+                                                    + eps_scale*Z[:, t - 1, 1:, :]
+            Z_t_j_1 = Z[:, t - 1, 1:, :]
+            Z_t_j_1_shape = Z_t_j_1.shape
+            
+            p_t_j_flatten = p_t_j.view(-1, z_dim)
+            Z_t_j_1_flatten = Z_t_j_1.reshape(-1, z_dim)
+            
+            _, _, _, _, log_probs = compute_log_probs(Z_t_j_1_flatten, 
+                                                      p_t_j_flatten, 
+                                                      target, 
+                                                      proposal, 
+                                                      betas[t], 
+                                                      grad_step, 
+                                                      eps_scale)
+            probs_flatten = compute_probs_from_log_probs(log_probs)
+            probs = probs_flatten.view(batch_size, N - 1)
+            u_t_1 = u[:, t, 0].unsqueeze(1).repeat(1, N - 1)
+            
+            mask_leq = (u_t_1 <= probs)
+            mask_ge = ~mask_leq
+            
+            mask_leq_big = mask_leq.unsqueeze(-1).repeat(1, 1, z_dim)
+            mask_ge_big = mask_ge.unsqueeze(-1).repeat(1, 1, z_dim)
+            
+            Z[:, t, 1:, :][mask_leq_big] = p_t_j[mask_leq_big]
+            Z[:, t, 1:, :][mask_ge_big] = Z[:, t - 1, 1:, :][mask_ge_big]
+            
+        #Z[:, :, 0, :] = z
+        #print("end step2")
+        #print("start step3")
+        log_weights = torch.zeros((T, batch_size, N), dtype = z.dtype).to(z.device)
+        for t in range(1, T + 1):
+            cur_z = Z[:, t - 1, :, :]
+            
+            z_flatten = cur_z.reshape(-1, z_dim)
+            E_flatten = -target.log_prob(z_flatten)
+            
+            E = E_flatten.reshape((batch_size, N))
+            
+            log_weights[t - 1, :, :] = -(betas[t] - betas[t - 1])*E
+            
+        
+        log_weights = log_weights.sum(axis = 0)
+        max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        log_weights = log_weights - max_logs
+        weights = torch.exp(log_weights)
+        sum_weights = torch.sum(weights, dim = 1)
+        weights = weights/sum_weights[:, None]
+
+        weights[weights != weights] = 0.
+        weights[weights.sum(1) == 0.] = 1.
+        
+        indices = torch.multinomial(weights, 1).squeeze().tolist()
+        z[:, -1, :] = Z[np.arange(batch_size), -1, indices, :]
+        #print("end step3")
+        #print("start step4")
+        W_3 = proposal.sample([batch_size, T])
+        U_3 = uniform.sample([batch_size, T]).to(z.device)
+        
+        for t in range(T, 0, -1):
+            cur_z_t = z[:, t, :].detach().clone()
+            cur_z_t.requires_grad_(True)
+            E_z_t, grad_z_t = grad_energy(cur_z_t, target, x=None)
+            
+            p_t_1 = (1. - grad_step)*cur_z_t - grad_step*betas[t]*grad_z_t + eps_scale*W_3[:, t - 1, :]
+            p_t_1 = p_t_1.detach().clone()
+            p_t_1.requires_grad_(True)
+            
+            cur_z_t = z[:, t, :].detach().clone()
+            cur_z_t.requires_grad_(True)
+            _, _, _, _, log_probs = compute_log_probs(cur_z_t, 
+                                                      p_t_1, 
+                                                      target, 
+                                                      proposal, 
+                                                      betas[t], 
+                                                      grad_step, 
+                                                      eps_scale)
+            
+            probs = compute_probs_from_log_probs(log_probs)
+            mask_assign = (U_3[:, t - 1] <= probs)
+            mask_assign_prev = ~mask_assign
+            
+            z[mask_assign, t - 1, :] = p_t_1[mask_assign, :].detach().clone()
+            z[mask_assign_prev, t - 1, :] = z[mask_assign_prev, t, :].detach().clone()
+        
+        #print("end step4")
+        
+    z_sp.append(z.detach().clone()) 
+    return z_sp
+
 def run_experiments_gaussians(dim_arr,  
                               scale_proposal, 
                               scale_target, 
@@ -109,12 +352,17 @@ def run_experiments_gaussians(dim_arr,
        torch.manual_seed(random_seed)
        np.random.seed(random_seed)
        random.seed(random_seed)
-       if mode_init == 'target':
+       if (mode_init == 'target') and (method != 'ais'):
           start = target.sample([batch_size])
-       elif mode_init == 'proposal':
+       elif mode_init == 'proposal' and (method != 'ais'):
           start = proposal.sample([batch_size])
+       elif (mode_init == 'target') and (method == 'ais'):
+          start = target.sample([batch_size, len(method_params['betas'])])
+       elif mode_init == 'proposal' and (method == 'ais'):
+          start = proposal.sample([batch_size, len(method_params['betas'])])
        else:
           raise ValueError('Unknown initialization method')
+
        if method == 'sir_correlated':
           alpha = (1 - method_params['c']/dim)**0.5
           history = sir_correlated_dynamics(start, 
@@ -129,6 +377,18 @@ def run_experiments_gaussians(dim_arr,
                                              proposal, 
                                              method_params['n_steps'], 
                                              method_params['N'])
+       elif method == 'ais':
+          history = ais_dynamics(start, 
+                                 target,
+                                 proposal, 
+                                 method_params['n_steps'], 
+                                 method_params['p0'], 
+                                 method_params['p'], 
+                                 method_params['N'], 
+                                 method_params['betas'], 
+                                 method_params['grad_step'], 
+                                 method_params['eps_scale'])
+          history = [history[i][:, 0, :] for i in range(len(history))]
        else:
           raise ValueError('Unknown sampling method')    
        last_history = history[(-num_points_in_chain - 1):-1]
