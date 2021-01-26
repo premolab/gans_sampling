@@ -109,8 +109,8 @@ def compute_probs_from_log_probs(log_probs):
                                         dtype = log_probs.dtype).to(log_probs.device)
     probs = log_probs.exp()
     return probs
-    
-def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_scale):
+
+def ais_dynamics(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_scale):
     #z - tensor (bs, T + 1, dim)
     z_sp = []
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
@@ -124,12 +124,6 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
         u = torch.zeros((batch_size, T + 1, N), dtype = z.dtype).to(z.device)
         #print("step1")
         #step 1
-        kappa = torch.zeros((batch_size, T + 1, z_dim), dtype = z.dtype).to(z.device)
-        
-        kappa_t_noise = proposal.sample([batch_size, T + 1])
-        
-        kappa[:, 0, :] = rhos[0]*z[:, 0, :] + ((1 - rhos[0]**2)**0.5) * kappa_t_noise[:, 0, :]
-        
         for t in range(1, T + 1):
             #print(f"t = {t}")
             not_equal_mask = (torch.norm(z[:, t, :] - z[:, t - 1, :], p=2, dim=-1) > 1e-13)
@@ -172,7 +166,6 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                 z_t_1_equal.requires_grad_(True)
                 
                 E_t_1_equal, grad_t_1_equal = grad_energy(z_t_1_equal, target, x=None)
-                
                 second_part_no_noise = (1. - grad_step)*z_t_1_equal - grad_step*betas[t]*grad_t_1_equal
 
                 stop = False
@@ -215,45 +208,40 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                     
                     if updates_num == num_equal:
                         stop = True
-            
-            kappa[:, t, :] = rhos[t]*v[:, t, 0, :] + ((1 - rhos[t]**2)**0.5) * kappa_t_noise[:, t, :]
+                    
         #print("end step 1")   
         #print("step2")
         #step 2
         W = proposal.sample([batch_size, N - 1])
         #Z - tensor (bs, T + 1, N, dim)
         Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
-        kappa_repeat = kappa[:, 0, :].unsqueeze(1).repeat(1, N - 1, 1)
-        kappa_N_noise = proposal.sample([batch_size, N - 1])
+        z_repeat = z[:, 0, :].unsqueeze(1).repeat(1, N - 1, 1)
         #print(z_repeat.shape)
         #print(W.shape)
         Z[:, :, 0, :] = z
-        Z[:, 0, 1:, :] = rhos[0]*kappa_repeat + ((1 - rhos[0]**2)**0.5) * kappa_N_noise
+        Z[:, 0, 1:, :] = p0*z_repeat + ((1 - p0**2)**0.5) * W
         
-        kappa_repeat_N = kappa.unsqueeze(2).repeat(1, 1, N - 1, 1)
+        v_repeat = v[:, :, 0, :].unsqueeze(2).repeat(1, 1, N - 1, 1)
         W_2 = proposal.sample([batch_size, T, N - 1])
         
         for t in range(1, T + 1):
             #print(f"t = {t}")
-            v[:, t, 1:, :] = rhos[t]*kappa_repeat_N[:, t - 1, :, :] + ((1 - rhos[t]**2)**0.5) * W_2[:, t - 1, :, :]
-            z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
-            z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
-            z_t_1_j_flatten.requires_grad_(True)
+            v[:, t, 1:, :] = p*v_repeat[:, t, :, :] + ((1 - p**2)**0.5) * W_2[:, t - 1, :, :]
+            v_t_shape = v[:, t, 1:, :].shape
+            v_t_j_flatten = v[:, t, 1:, :].reshape(-1, z_dim).detach().clone()
+            v_t_j_flatten.requires_grad_(True)
             
-            _, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
-            grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
-            p_t_j = (1. - grad_step)*Z[:, t - 1, 1:, :] - grad_step*betas[t]*grad_z_t_1_j \
-                                                    + eps_scale*v[:, t, 1:, :]
-            Z_t_1_j = Z[:, t - 1, 1:, :]
-            Z_t_1_j_shape = Z_t_1_j.shape
+            E_v_t_j_flatten, grad_v_t_j_flatten = grad_energy(v_t_j_flatten, target, x=None)
+            grad_v_t_j = grad_v_t_j_flatten.reshape(v_t_shape)
+            p_t_j = (1. - grad_step)*v[:, t, 1:, :] - grad_step*betas[t]*grad_v_t_j \
+                                                    + eps_scale*Z[:, t - 1, 1:, :]
+            Z_t_j_1 = Z[:, t - 1, 1:, :]
+            Z_t_j_1_shape = Z_t_j_1.shape
             
-            p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
-            p_t_j_flatten.requires_grad_(True)
+            p_t_j_flatten = p_t_j.view(-1, z_dim)
+            Z_t_j_1_flatten = Z_t_j_1.reshape(-1, z_dim)
             
-            Z_t_1_j_flatten = Z_t_1_j.reshape(-1, z_dim).detach().clone()
-            Z_t_1_j_flatten.requires_grad_(True)
-            
-            _, _, _, _, log_probs = compute_log_probs(Z_t_1_j_flatten, 
+            _, _, _, _, log_probs = compute_log_probs(Z_t_j_1_flatten, 
                                                       p_t_j_flatten, 
                                                       target, 
                                                       proposal, 
@@ -299,13 +287,43 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
         weights[weights.sum(1) == 0.] = 1.
         
         indices = torch.multinomial(weights, 1).squeeze().tolist()
-        z[:, :, :] = Z[np.arange(batch_size), :, indices, :]
+        z[:, -1, :] = Z[np.arange(batch_size), -1, indices, :]
+        #print("end step3")
+        #print("start step4")
+        W_3 = proposal.sample([batch_size, T])
+        U_3 = uniform.sample([batch_size, T]).to(z.device)
+        
+        for t in range(T, 0, -1):
+            cur_z_t = z[:, t, :].detach().clone()
+            cur_z_t.requires_grad_(True)
+            E_z_t, grad_z_t = grad_energy(cur_z_t, target, x=None)
+            
+            p_t_1 = (1. - grad_step)*cur_z_t - grad_step*betas[t]*grad_z_t + eps_scale*W_3[:, t - 1, :]
+            p_t_1 = p_t_1.detach().clone()
+            p_t_1.requires_grad_(True)
+            
+            cur_z_t = z[:, t, :].detach().clone()
+            cur_z_t.requires_grad_(True)
+            _, _, _, _, log_probs = compute_log_probs(cur_z_t, 
+                                                      p_t_1, 
+                                                      target, 
+                                                      proposal, 
+                                                      betas[t], 
+                                                      grad_step, 
+                                                      eps_scale)
+            
+            probs = compute_probs_from_log_probs(log_probs)
+            mask_assign = (U_3[:, t - 1] <= probs)
+            mask_assign_prev = ~mask_assign
+            
+            z[mask_assign, t - 1, :] = p_t_1[mask_assign, :].detach().clone()
+            z[mask_assign_prev, t - 1, :] = z[mask_assign_prev, t, :].detach().clone()
         
         #print("end step4")
         
     z_sp.append(z.detach().clone()) 
     return z_sp
-
+    
 def run_experiments_gaussians(dim_arr,  
                               scale_proposal, 
                               scale_target, 
@@ -334,18 +352,19 @@ def run_experiments_gaussians(dim_arr,
        torch.manual_seed(random_seed)
        np.random.seed(random_seed)
        random.seed(random_seed)
-    
+
        if (mode_init == 'target') and (method != 'ais'):
           start = target.sample([batch_size])
        elif mode_init == 'proposal' and (method != 'ais'):
           start = proposal.sample([batch_size])
-       elif (mode_init == 'target') and (method == 'ais'):
-        
+       elif (mode_init == 'target') and (method == 'ais'):        
           start = target.sample([batch_size, len(method_params['betas'])])
-       elif mode_init == 'proposal' and (method == 'ais'):
+       elif (mode_init == 'proposal') and (method == 'ais'):
           start = proposal.sample([batch_size, len(method_params['betas'])])
-       else:
-          raise ValueError('Unknown initialization method')
+
+       
+
+
        if method == 'sir_correlated':
           alpha = (1 - method_params['c']/dim)**0.5
           history = sir_correlated_dynamics(start, 
@@ -360,18 +379,6 @@ def run_experiments_gaussians(dim_arr,
                                              proposal, 
                                              method_params['n_steps'], 
                                              method_params['N'])
-       elif method == 'ais':
-          history = ais_dynamics(start, 
-                                 target,
-                                 proposal, 
-                                 method_params['n_steps'], 
-                                 method_params['N'], 
-                                 method_params['betas'], 
-                                 method_params['rhos'], 
-                                 method_params['grad_step'], 
-                                 method_params['eps_scale'])
-          history = [history[i][:, -1, :] for i in range(len(history))]
-          
        else:
           raise ValueError('Unknown sampling method')    
        last_history = history[(-num_points_in_chain - 1):-1]
@@ -593,3 +600,4 @@ def run_experiments_2_gaussians(dim_arr,
        dict_results[mode_init]['history_norm'].append(norm_history)
     
     return dict_results
+
