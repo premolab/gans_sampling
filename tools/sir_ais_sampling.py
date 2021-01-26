@@ -109,7 +109,90 @@ def compute_probs_from_log_probs(log_probs):
                                         dtype = log_probs.dtype).to(log_probs.device)
     probs = log_probs.exp()
     return probs
-    
+
+def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_scale):
+    z_sp = []
+    batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
+    T = T - 1
+    uniform = Uniform(low = 0.0, high = 1.0)
+    v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
+    u = uniform.sample((batch_size, T + 1, N)).to(z.device)
+    Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
+    for _ in range(n_steps):
+        z_sp.append(z.detach().clone())
+        W = proposal.sample([batch_size, N - 1])
+        Z[:, :, 0, :] = z ###Set current particle at idx 0
+        Z[:, 0, 1:, :] = W ###Random initial points
+        W_2 = proposal.sample([batch_size, T, N - 1]) ##Innovation noise during all trjacetories except current one
+        for t in range(1, T + 1):
+            #print(f"t = {t}")
+            v[:, t, 1:, :] = W_2[:, t - 1, :, :]
+            z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
+            z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
+            z_t_1_j_flatten.requires_grad_(True)
+            
+            _, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
+            grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
+            p_t_j = (1. - grad_step)*Z[:, t - 1, 1:, :] - grad_step*betas[t]*grad_z_t_1_j \
+                                                    + eps_scale*v[:, t, 1:, :]
+            Z_t_1_j = Z[:, t - 1, 1:, :]
+            Z_t_1_j_shape = Z_t_1_j.shape
+            
+            p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
+            p_t_j_flatten.requires_grad_(True)
+            
+            Z_t_1_j_flatten = Z_t_1_j.reshape(-1, z_dim).detach().clone()
+            Z_t_1_j_flatten.requires_grad_(True)
+            
+            _, _, _, _, log_probs = compute_log_probs(Z_t_1_j_flatten, 
+                                                      p_t_j_flatten, 
+                                                      target, 
+                                                      proposal, 
+                                                      betas[t], 
+                                                      grad_step, 
+                                                      eps_scale)
+            probs_flatten = compute_probs_from_log_probs(log_probs)
+            probs = probs_flatten.view(batch_size, N - 1)
+            u_t_1 = u[:, t, 0].unsqueeze(1).repeat(1, N - 1)
+            
+            mask_leq = (u_t_1 <= probs)
+            mask_ge = ~mask_leq
+            
+            mask_leq_big = mask_leq.unsqueeze(-1).repeat(1, 1, z_dim)
+            mask_ge_big = mask_ge.unsqueeze(-1).repeat(1, 1, z_dim)
+            
+            Z[:, t, 1:, :][mask_leq_big] = p_t_j[mask_leq_big]
+            Z[:, t, 1:, :][mask_ge_big] = Z[:, t - 1, 1:, :][mask_ge_big]
+        
+        log_weights = torch.zeros((T, batch_size, N), dtype = z.dtype).to(z.device)
+            
+        for t in range(1, T + 1):
+            cur_z = Z[:, t - 1, :, :]
+            
+            z_flatten = cur_z.reshape(-1, z_dim)
+            E_flatten = -target.log_prob(z_flatten)
+            
+            E = E_flatten.reshape((batch_size, N))
+            
+            log_weights[t - 1, :, :] = -(betas[t] - betas[t - 1])*E
+        
+        log_weights = log_weights.sum(axis = 0)
+        max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        log_weights = log_weights - max_logs
+        sum_weights = torch.logsumexp(log_weights, dim = 1)
+        log_weights = log_weights- sum_weights[:, None]
+        weights = log_weights.exp()
+        weights[weights != weights] = 0.
+        weights[weights.sum(1) == 0.] = 1.
+        
+        indices = torch.multinomial(weights, 1).squeeze().tolist()
+        z[:, :, :] = Z[np.arange(batch_size), :, indices, :]
+        
+        z_sp.append(z.detach().clone()) 
+    return z_sp
+
+
+
 def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_scale):
     #z - tensor (bs, T + 1, dim)
     z_sp = []
