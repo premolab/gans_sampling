@@ -11,6 +11,7 @@ class Discriminator(nn.Module):
         self.args = args
         m_g = args.m_g
         ch = args.ndf
+        self.device = args.device
 
         self.layer1 = self.make_layer(3, ch//8)
         self.layer2 = self.make_layer(ch//8, ch//4)

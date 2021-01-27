@@ -6,8 +6,10 @@ import torch
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 
-from metrics import to_var
-from utils import to_np
+import sys
+sys.path.append("../sampling_utils")
+
+from general_utils import to_var, to_np
 
 def get_loader(
         root,
@@ -81,7 +83,7 @@ class GenDataset(torch.utils.data.Dataset):
         ])
 
     def __getitem__(self, index):
-        z = to_var(torch.randn(1, self.G.z_dim))
+        z = to_var(torch.randn(1, self.G.z_dim), self.G.device)
         return self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
 
     def __len__(self):
