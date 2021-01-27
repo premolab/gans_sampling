@@ -30,10 +30,6 @@ G = Generator(args)
 D = Discriminator(args)
 
 trainer = Trainer(train_loader, G, D, args)
-if (args.model_load_path is not None) and (args.pretrained_filename is not None):
-   print("Start downloading pretrained models")
-   trainer.load(args.pretrained_filename)
-
 
 if args.verbose:
    trainer.show_current_model()

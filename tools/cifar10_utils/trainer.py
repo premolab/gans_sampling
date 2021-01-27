@@ -11,8 +11,15 @@ import torchvision.transforms as transforms
 
 from dataloader import GenDataset
 from logger import Logger
-from metrics import to_var, inception_score
-from utils import print_network, init_params_xavier, to_np
+
+import sys
+sys.path.append("../sampling_utils")
+
+from metrics import inception_score
+from general_utils import (print_network, 
+                           init_params_xavier,
+                           to_var,
+                           to_np) 
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -30,6 +37,7 @@ class Trainer:
 
         self.epoch = 0
         self.step = 0
+        self.device = args.device
 
         self.logger = Logger(log_file = args.log_file,
                              plot_dir = args.path_to_plots,
@@ -42,12 +50,23 @@ class Trainer:
         self.D_scheduler = optim.lr_scheduler.ExponentialLR(self.D_optimizer, gamma=0.99)
 
         self.criterion = nn.BCEWithLogitsLoss()
+ 
+        if (args.model_load_path is not None) and (args.pretrained_models is not None):
+           print("Start downloading pretrained models")
+           trainer.load_models(args.pretrained_models)
 
-        if torch.cuda.is_available():
-            self.G.cuda()
-            self.D.cuda()
-        
-        if args.random_seed is not None and args.init_nets:
+        if (args.model_load_path is not None) and (args.pretrained_opt_scheduls is not None):
+           print("Start downloading pretrained optimizers")
+           trainer.load_optimizers_schedulers(args.pretrained_opt_scheduls)
+
+        self.G.device = self.device
+        self.D.device = self.device
+
+        if self.device is not None:
+            self.G = self.G.to(self.device)
+            self.D = self.D.to(self.device)
+
+        if (args.random_seed is not None) and (args.pretrained_models is not None):
             torch.manual_seed(args.random_seed)
             np.random.seed(args.random_seed)
             random.seed(args.random_seed)
@@ -62,7 +81,7 @@ class Trainer:
             torch.manual_seed(args.random_seed)
             np.random.seed(args.random_seed)
             random.seed(args.random_seed)
-        self.fixed_z = to_var(torch.randn(self.nsamples, self.G.z_dim))
+        self.fixed_z = to_var(torch.randn(self.nsamples, self.G.z_dim), device = self.device)
 
     def train(self):
         self.sample()
@@ -80,12 +99,14 @@ class Trainer:
             if (self.epoch - 1) % self.args.num_epoch_for_save == 0:
                 print("Start to save models")
                 cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-                filename = f'{cur_time}_models_epoch_{self.epoch}.pth' 
-                self.save(filename)
+                filename_models = f'{cur_time}_models_epoch_{self.epoch}.pth' 
+                self.save_models(filename_models)
+                filename_opt_sched = f'{cur_time}_opt_sched_epoch_{self.epoch}.pth' 
+                self.save_optimizers_schedulers(filename_opt_sched)
 
                 if self.args.inception_score:
                     print("Start to calculate Inception score")
-                    score_mean, score_std = inception_score(GenDataset(self.G, 50000), torch.cuda.is_available(), self.batch_size, True)
+                    score_mean, score_std = inception_score(GenDataset(self.G, 50000), self.device, self.batch_size, True)
                     print("Inception score at epoch {} with 50000 generated samples - Mean: {:.3f}, Std: {:.3f}".format(self.epoch, score_mean, score_std))
                     self.logger.scalar_summary("mean Inception score", float(score_mean), self.epoch)
                     self.logger.scalar_summary("std Inception score", float(score_std), self.epoch)
@@ -95,14 +116,14 @@ class Trainer:
         self.D.train()
 
         for i, (real_imgs, real_labels) in enumerate(self.train_loader):
-            real_imgs, real_labels = to_var(real_imgs), to_var(real_labels)
+            real_imgs, real_labels = to_var(real_imgs, self.device), to_var(real_labels, self.device)
             self.step += 1
 
             for _ in range(self.d_iter):
                 # Discriminator
                 # V(D) = E[logD(x)] + E[log(1-D(G(z)))]
                 self.D.zero_grad()
-                z = to_var(torch.randn(self.batch_size, self.G.z_dim))
+                z = to_var(torch.randn(self.batch_size, self.G.z_dim), self.device)
 
                 real_labels.fill_(1)
                 real_labels = real_labels.float()
@@ -150,7 +171,7 @@ class Trainer:
 
     def infer(self, nsamples):
         self.G.eval()
-        z = to_var(torch.randn(nsamples, self.G.z_dim))
+        z = to_var(torch.randn(nsamples, self.G.z_dim), self.device)
         return self.G(z)
 
     def denorm(self, x):
@@ -162,20 +183,33 @@ class Trainer:
         print_network(self.G)
         print_network(self.D)
 
-    def save(self, filename):        
+    def save_models(self, filename):        
         torch.save(
             {'G': self.G.state_dict(), 
-             'D': self.D.state_dict(),
-             'G_opt': self.G_optimizer.state_dict(),
-             'D_opt': self.D_optimizer.state_dict(),
+             'D': self.D.state_dict()
             },
             os.path.join(self.args.model_save_path, filename)
         )
 
-    def load(self, filename):
+    def save_optimizers_schedulers(self, filename):
+       torch.save(
+            {'G_opt': self.G_optimizer.state_dict(),
+             'D_opt': self.D_optimizer.state_dict(),
+             'G_sched': self.G_scheduler.state_dict(),
+             'D_sched': self.D_scheduler.state_dict() 
+            },
+            os.path.join(self.args.model_save_path, filename)
+        )
+
+    def load_models(self, filename):
         ckpt = torch.load(os.path.join(self.args.model_load_path, filename))
         self.G.load_state_dict(ckpt['G'])
         self.D.load_state_dict(ckpt['D'])
+
+    def load_optimizers_schedulers(self, filename):
+        ckpt = torch.load(os.path.join(self.args.model_load_path, filename))
         self.G_optimizer.load_state_dict(ckpt['G_opt'])
         self.D_optimizer.load_state_dict(ckpt['D_opt'])
+        self.G_scheduler.load_state_dict(ckpt['G_sched'])
+        self.D_scheduler.load_state_dict(ckpt['D_sched'])
 

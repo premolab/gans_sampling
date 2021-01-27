@@ -1,8 +1,12 @@
 # Code referenced from https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514
 import numpy as np
 from torchvision.utils import save_image
-from utils import send_file_to_remote
 import datetime
+
+import sys
+sys.path.append("../sampling_utils")
+
+from general_utils import send_file_to_remote
 
 class Logger(object):
     def __init__(self, 

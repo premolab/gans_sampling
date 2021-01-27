@@ -1,4 +1,8 @@
-from utils import DotDict
+import sys
+sys.path.append("../sampling_utils")
+
+from general_utils import DotDict
+import torch
 
 args = DotDict()
 
@@ -21,10 +25,13 @@ args.data_root = '/home/daniil/gans-mcmc/cifar10/cifar_data'
 args.nsamples = 64
 args.inception_score = True
 args.workers = 4
+args.device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
-args.init_nets = False
-args.model_load_path = '/home/daniil/gans-mcmc/cifar10_experiment/2021_01_26-01_40_45/models'
-args.pretrained_filename = '2021_01_26-04_17_40_models_epoch_31.pth'
+#args.model_load_path = '/home/daniil/gans-mcmc/cifar10_experiment/2021_01_26-01_40_45/models'
+#args.pretrained_filename = '2021_01_26-04_17_40_models_epoch_31.pth'
+args.model_load_path = None
+args.pretrained_models = None
+args.pretrained_opt_scheduls = None
 
 args.log_step = 20
 args.sample_step = 400

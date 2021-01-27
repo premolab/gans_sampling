@@ -10,6 +10,7 @@ class Generator(nn.Module):
         self.z_dim = args.z_dim
         self.m_g = args.m_g  # Dataset Dependent
         self.ch = args.ngf
+        self.device = args.device
 
         self.linear = nn.Linear(self.z_dim, self.m_g*self.m_g*self.ch)
         self.activation = nn.ReLU()
