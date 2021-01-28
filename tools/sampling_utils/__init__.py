@@ -26,7 +26,7 @@ from ebm_sampling import (grad_energy,
                           tempered_transitions_sampling)
 
 from sir_ais_sampling import (compute_sir_log_weights,
-                              sir_independent_dynamics,
+                           sir_independent_dynamics,
                               sir_correlated_dynamics,
                               compute_log_probs,
                               compute_probs_from_log_probs,

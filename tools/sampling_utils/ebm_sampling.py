@@ -230,6 +230,41 @@ def xtry_langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, N, n
     zs = np.stack(zs, axis=0)
     return z_last_np, zs
 
+
+def get_mh_kernel_log_prob(log_pi1, log_pi2, log_transition_forward, log_transition_backward):
+    return (log_pi2 + log_transition_backward) - (log_pi1 + log_transition_forward)
+
+
+def get_langevin_transition_kernel(z1, z2, grad, grad_step, sigma, stand_normal=None):
+    loc = z2 - z1 + grad_step*grad
+    log_prob = stand_normal.log_prob(loc/sigma)
+    return log_prob
+
+def do_transition_step(z, z_new, energy, grad, grad_step, sigma, stand_normal=None, uniform=None, target=None):
+    energy_new, grad_new = grad_energy(z_new, target, x=None)
+    log_transition_forward = get_langevin_transition_kernel(z, z_new, grad, grad_step, sigma, stand_normal)
+    log_transition_backward = get_langevin_transition_kernel(z_new, z, grad_new, grad_step, sigma, stand_normal)
+    acc_log_prob = get_mh_kernel_log_prob(-energy, -energy_new, log_transition_forward, log_transition_backward)
+    
+    generate_uniform_var = uniform.sample([z.shape[0]]).to(z.device)
+    log_generate_uniform_var = torch.log(generate_uniform_var)
+    mask = log_generate_uniform_var < acc_log_prob
+
+    #print(mask.sum().item() / mask.shape[0])
+    
+    with torch.no_grad():
+        z[mask] = z_new[mask].detach().clone()
+        z = z.data
+        z.requires_grad_(True)
+        energy[mask] = energy_new[mask]
+        energy[~mask] = energy[~mask]
+        
+        grad[mask] = grad_new[mask]
+        grad[~mask] = grad[~mask]
+
+    return z, energy, grad
+
+
 def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, *betas):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
@@ -254,29 +289,34 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
         z_forward = z.clone().detach()
         z_forward.requires_grad_(True)
         energy_forward = torch.zeros(batch_size, len(betas))
+        E, grad = grad_energy(z_forward, target, x=None)
+        energy_forward[:, 0] = E
         
         for i, beta in enumerate(betas):
+            if beta == 1.0:
+                continue
             eps = eps_scale * proposal.sample([batch_size])
-            E, grad = grad_energy(z_forward, target, x=None)
-            
-            z_forward = z_forward - grad_step * beta * grad + eps
-            z_forward = z_forward.data
-            z_forward.requires_grad_(True)
+
+            z_forward_new = z_forward - grad_step * beta * grad + eps
+            z_forward, E, grad = do_transition_step(z_forward, z_forward_new, E, grad, grad_step * beta, eps_scale, stand_normal, uniform, target)
             energy_forward[:, i] = E
 
         z_backward = z_forward.clone().detach()
         z_backward.requires_grad_(True)
         energy_backward = torch.zeros(batch_size, len(betas))
-        for beta in betas[::-1]:
+        for i, beta in enumerate(betas[::-1]):
+            if beta == 1.0:
+                continue
             eps = eps_scale * proposal.sample([batch_size])
-            E, grad = grad_energy(z_backward, target, x=None)
-            
-            z_backward = z_backward + grad_step * beta * grad + eps
-            z_backward = z_backward.data
-            z_backward.requires_grad_(True)
-            energy_backward[:, i] = E
 
-        energy_backward = torch.flip(energy_backward, dims=(1,))
+            z_backward_new = z_backward - grad_step * beta * grad + eps
+            z_backward, E, grad = do_transition_step(z_backward, z_backward_new, E, grad, grad_step * beta, eps_scale, stand_normal, uniform, target)
+            j = len(betas) - i - 2
+            # print(j)
+            # print(E)
+            energy_backward[:, j] = E
+
+        #print(energy_backward[0])
 
         F_forward = (betas_diff * energy_forward[:, :-1]).sum(-1)
         F_backward = (betas_diff * energy_backward[:, :-1]).sum(-1)
@@ -285,6 +325,8 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
         generate_uniform_var = uniform.sample([batch_size]).to(z.device)
         log_generate_uniform_var = torch.log(generate_uniform_var)
         mask = log_generate_uniform_var < log_accept_prob
+
+        #print('final', mask.sum().item() / mask.shape[0])
         
         acceptence += mask
         with torch.no_grad():
