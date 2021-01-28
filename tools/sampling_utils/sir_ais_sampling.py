@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import random
 import sklearn
 
-from distributions import (Target, 
+from .distributions import (Target, 
                            Gaussian_mixture, 
                            IndependentNormal,
                            init_independent_normal)
