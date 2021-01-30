@@ -494,37 +494,61 @@ def epoch_visualization(X_train,
                                              path_to_save_remote = path_to_save_remote,
                                              port_to_remote = port_to_remote)
 
+
 def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
-    fig, axs = plt.subplots(ncols=4, nrows=1, figsize=(25, 6))
+    instance = list(evols.values())[0]
+    keys = ['mode_std', 'hqr', 'jsd', 'emd']
+    ncols = np.sum([int(len(instance[k]) > 0) for k in keys])
+    
+    fig, axs = plt.subplots(ncols=ncols, nrows=1, figsize=(6*ncols, 6))
 
     if name is not None:
         fig.suptitle(name)
-    if sigma is not None:
-        axs[0].axhline(sigma, label='real', color='black')
-        axs[0].set_xlabel('iter')
-        axs[0].set_ylabel('mode std')
+    k = 0
+    if sigma is not None and len(instance['mode_std']) > 0:
+        axs[k].axhline(sigma, label='real', color='black')
+        axs[k].set_xlabel('iter')
+        axs[k].set_ylabel('mode std')
+        k += 1
 
-    axs[1].axhline(1, label='real', color='black')
-    axs[1].set_xlabel('iter')
-    axs[1].set_ylabel('high quality rate')
+    if len(instance['hqr']) > 0:
+        axs[k].axhline(1, label='real', color='black')
+        axs[k].set_xlabel('iter')
+        axs[k].set_ylabel('high quality rate')
+        k += 1
 
-    axs[2].axhline(0, label='real', color='black')
-    axs[2].set_xlabel('iter')
-    axs[2].set_ylabel('JSD')
+    if len(instance['jsd']) > 0:
+        axs[k].axhline(0, label='real', color='black')
+        axs[k].set_xlabel('iter')
+        axs[k].set_ylabel('JSD')
+        k += 1
 
-    axs[3].axhline(0, label='real', color='black')
-    axs[3].set_xlabel('iter')
-    axs[3].set_ylabel('EMD')
+    emd_ax = axs if k == 0 else axs[k]
+    emd_ax.axhline(0, label='real', color='black')
+    emd_ax.set_xlabel('iter')
+    emd_ax.set_ylabel('EMD')
 
     for label, evol in evols.items():
-        axs[0].plot(np.arange(0, len(evol['mode_std'])) * every, evol['mode_std'], label=label, marker='o')
-        axs[1].plot(np.arange(0, len(evol['mode_std'])) * every, evol['hqr'], label=label, marker='o')
-        axs[2].plot(np.arange(0, len(evol['mode_std'])) * every, evol['jsd'], label=label, marker='o')
-        axs[3].plot(np.arange(0, len(evol['mode_std'])) * every, evol['emd'], label=label, marker='o')
+        k == 0
+        if len(instance['mode_std']) > 0:
+            k += 1
+            axs[0].plot(np.arange(0, len(evol['mode_std'])) * every, evol['mode_std'], label=label, marker='o')
+        if len(instance['hqr']) > 0:
+            k += 1   
+            axs[1].plot(np.arange(0, len(evol['hqr'])) * every, evol['hqr'], label=label, marker='o')
+        if len(instance['jsd']) > 0:
+            k += 1
+            axs[2].plot(np.arange(0, len(evol['jsd'])) * every, evol['jsd'], label=label, marker='o')
+        emd_ax.plot(np.arange(0, len(evol['emd'])) * every, evol['emd'], label=label, marker='o')
 
-    for ax in axs:
-        ax.grid()
-        ax.legend()
+    if k > 0:
+         for ax in axs:
+            ax.grid()
+            ax.legend()
+    else:
+      emd_ax.grid()
+      emd_ax.legend()
+        
 
     if savepath is not None:
         plt.savefig(savepath)

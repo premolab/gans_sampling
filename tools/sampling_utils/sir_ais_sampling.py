@@ -4,12 +4,15 @@ import torch.nn.functional as F
 import random
 import sklearn
 
-from .distributions import (Target, 
+from distributions import (Target, 
                            Gaussian_mixture, 
                            IndependentNormal,
                            init_independent_normal)
 
-
+from torch.distributions import (MultivariateNormal, 
+                                 Normal, 
+                                 Independent, 
+                                 Uniform)
 
 from general_utils import DotDict
 from metrics import Evolution
@@ -194,7 +197,6 @@ def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_sc
     return z_sp
 
 
-
 def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_scale):
     #z - tensor (bs, T + 1, dim)
     z_sp = []
@@ -322,7 +324,9 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
             #print(f"t = {t}")
             v[:, t, 1:, :] = rhos[t]*kappa_repeat_N[:, t - 1, :, :] + ((1 - rhos[t]**2)**0.5) * W_2[:, t - 1, :, :]
             z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
-            z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
+            #z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
+            z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
+
             z_t_1_j_flatten.requires_grad_(True)
             
             _, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
@@ -332,10 +336,12 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
             Z_t_1_j = Z[:, t - 1, 1:, :]
             Z_t_1_j_shape = Z_t_1_j.shape
             
-            p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
+            #p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
+            p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
             p_t_j_flatten.requires_grad_(True)
             
-            Z_t_1_j_flatten = Z_t_1_j.reshape(-1, z_dim).detach().clone()
+            #Z_t_1_j_flatten = Z_t_1_j.reshape(-1, z_dim).detach().clone()
+            Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
             Z_t_1_j_flatten.requires_grad_(True)
             
             _, _, _, _, log_probs = compute_log_probs(Z_t_1_j_flatten, 
@@ -365,10 +371,14 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
         for t in range(1, T + 1):
             cur_z = Z[:, t - 1, :, :]
             
-            z_flatten = cur_z.reshape(-1, z_dim)
-            E_flatten = -target.log_prob(z_flatten)
+            #z_flatten = cur_z.reshape(-1, z_dim)
+            z_flatten = torch.transpose(cur_z, 0, 1).reshape((batch_size*(N), z_dim)).detach().clone()
+
+            #E_flatten = -target.log_prob(z_flatten)
+            E_flatten = -target(z_flatten)
             
-            E = E_flatten.reshape((batch_size, N))
+            #E = E_flatten.reshape((batch_size, N))
+            E = E_flatten.reshape(cur_z.shape[:-1][::-1]).T
             
             log_weights[t - 1, :, :] = -(betas[t] - betas[t - 1])*E
             
