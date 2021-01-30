@@ -16,6 +16,7 @@ from torch.distributions import (MultivariateNormal,
 
 from general_utils import DotDict
 from metrics import Evolution
+import ebm_sampling
 from ebm_sampling import grad_energy
 
 def compute_sir_log_weights(x, target, proposal):
@@ -330,7 +331,9 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
             z_t_1_j_flatten.requires_grad_(True)
             
             _, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
-            grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
+            #grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
+            grad_z_t_1_j = torch.transpose(grad_z_t_1_j_flatten.reshape(list(z_t_1_j_shape[:-1][::-1]) + [z_t_1_j_shape[-1]]), 0, 1)
+
             p_t_j = (1. - grad_step)*Z[:, t - 1, 1:, :] - grad_step*betas[t]*grad_z_t_1_j \
                                                     + eps_scale*v[:, t, 1:, :]
             Z_t_1_j = Z[:, t - 1, 1:, :]
@@ -371,14 +374,14 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
         for t in range(1, T + 1):
             cur_z = Z[:, t - 1, :, :]
             
-            #z_flatten = cur_z.reshape(-1, z_dim)
-            z_flatten = torch.transpose(cur_z, 0, 1).reshape((batch_size*(N), z_dim)).detach().clone()
+            z_flatten = cur_z.reshape(-1, z_dim)
+            #z_flatten = torch.transpose(cur_z, 0, 1).reshape((batch_size*(N), z_dim)).detach().clone()
 
             #E_flatten = -target.log_prob(z_flatten)
             E_flatten = -target(z_flatten)
             
-            #E = E_flatten.reshape((batch_size, N))
-            E = E_flatten.reshape(cur_z.shape[:-1][::-1]).T
+            E = E_flatten.reshape((batch_size, N))
+            #E = E_flatten.reshape(cur_z.shape[:-1][::-1]).T
             
             log_weights[t - 1, :, :] = -(betas[t] - betas[t - 1])*E
             
@@ -457,7 +460,7 @@ def run_experiments_gaussians(dim_arr,
                                              method_params['N'])
        elif method == 'ais':
           history = ais_dynamics(start, 
-                                 target,
+                                 target.log_prob,
                                  proposal, 
                                  method_params['n_steps'], 
                                  method_params['N'], 
@@ -466,6 +469,17 @@ def run_experiments_gaussians(dim_arr,
                                  method_params['grad_step'], 
                                  method_params['eps_scale'])
           history = [history[i][:, -1, :] for i in range(len(history))]
+
+       elif method == 'vanilla_ais':
+          history = ebm_sampling.ais_vanilla_dynamics(start, 
+                                 target.log_prob,
+                                 proposal, 
+                                 method_params['n_steps'], 
+                                 method_params['grad_step'], 
+                                 method_params['eps_scale'],
+                                 method_params['N'], 
+                                 *method_params['betas'],)
+          #history = [history[i][:, -1, :] for i in range(len(history))]
           
        else:
           raise ValueError('Unknown sampling method')    
