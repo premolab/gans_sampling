@@ -95,8 +95,8 @@ def compute_log_probs(point1, point2, target, proposal, beta, grad_step, eps_sca
     
     energy_part = beta*(E_point1 - E_point2)
     
-    propose_vec_1 = point1 - (1. - grad_step)*point2 + grad_step*beta*point2
-    propose_vec_2 = point2 - (1. - grad_step)*point1 + grad_step*beta*grad_point1
+    propose_vec_1 = point1 - point2 + grad_step*beta*grad_point2
+    propose_vec_2 = point2 - point1 + grad_step*beta*grad_point1
     
     propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
     propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
@@ -111,13 +111,11 @@ def compute_log_probs(point1, point2, target, proposal, beta, grad_step, eps_sca
 
 def compute_probs_from_log_probs(log_probs):
     mask_zeros = log_probs > 0.
-    num_big_zeros = mask_zeros.sum().item()
-    log_probs[mask_zeros] = torch.zeros(num_big_zeros, 
-                                        dtype = log_probs.dtype).to(log_probs.device)
+    log_probs[mask_zeros] = 0.
     probs = log_probs.exp()
     return probs
 
-def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_scale):
+def ais_vanilla(z, target, proposal, n_steps, N, betas, grad_step, eps_scale):
     z_sp = []
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1
@@ -135,20 +133,23 @@ def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_sc
             #print(f"t = {t}")
             v[:, t, 1:, :] = W_2[:, t - 1, :, :]
             z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
-            z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
+            #z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
+            z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
             z_t_1_j_flatten.requires_grad_(True)
             
             _, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
-            grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
-            p_t_j = (1. - grad_step)*Z[:, t - 1, 1:, :] - grad_step*betas[t]*grad_z_t_1_j \
-                                                    + eps_scale*v[:, t, 1:, :]
+            #grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
+            grad_z_t_1_j = torch.transpose(grad_z_t_1_j_flatten.reshape(list(z_t_1_j_shape[:-1][::-1]) + [z_t_1_j_shape[-1]]), 0, 1)
+
             Z_t_1_j = Z[:, t - 1, 1:, :]
             Z_t_1_j_shape = Z_t_1_j.shape
+            p_t_j = Z_t_1_j - grad_step*betas[t]*grad_z_t_1_j + eps_scale*v[:, t, 1:, :]
             
             p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
             p_t_j_flatten.requires_grad_(True)
             
-            Z_t_1_j_flatten = Z_t_1_j.reshape(-1, z_dim).detach().clone()
+            #Z_t_1_j_flatten = Z_t_1_j.reshape(-1, z_dim).detach().clone()
+            Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
             Z_t_1_j_flatten.requires_grad_(True)
             
             _, _, _, _, log_probs = compute_log_probs(Z_t_1_j_flatten, 
@@ -159,9 +160,11 @@ def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_sc
                                                       grad_step, 
                                                       eps_scale)
             probs_flatten = compute_probs_from_log_probs(log_probs)
-            probs = probs_flatten.view(batch_size, N - 1)
-            u_t_1 = u[:, t, 0].unsqueeze(1).repeat(1, N - 1)
+            #probs = probs_flatten.view(batch_size, N - 1)
+            #probs = torch.transpose(probs_flatten.reshape(list(z_t_1_j_shape[:-1][::-1]) + [z_t_1_j_shape[-1]]), 0, 1)
+            probs = probs_flatten.reshape(N - 1, batch_size).T #cur_z.shape[:-1][::-1]).T
             
+            u_t_1 = u[:, t, 0].unsqueeze(1).repeat(1, N - 1)
             mask_leq = (u_t_1 <= probs)
             mask_ge = ~mask_leq
             
@@ -177,9 +180,11 @@ def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_sc
             cur_z = Z[:, t - 1, :, :]
             
             z_flatten = cur_z.reshape(-1, z_dim)
-            E_flatten = -target.log_prob(z_flatten)
+            #z_flatten = torch.transpose(cur_z, 0, 1).reshape((batch_size*(N), z_dim))
+            E_flatten = -target(z_flatten)
             
             E = E_flatten.reshape((batch_size, N))
+            #E = E_flatten.reshape(cur_z.shape[:-1][::-1]).T
             
             log_weights[t - 1, :, :] = -(betas[t] - betas[t - 1])*E
         
@@ -187,20 +192,21 @@ def ais_vanilla(z, target, proposal, n_steps, p0, p, N, betas, grad_step, eps_sc
         max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
         log_weights = log_weights - max_logs
         sum_weights = torch.logsumexp(log_weights, dim = 1)
-        log_weights = log_weights- sum_weights[:, None]
+        log_weights = log_weights - sum_weights[:, None]
         weights = log_weights.exp()
         weights[weights != weights] = 0.
         weights[weights.sum(1) == 0.] = 1.
         
         indices = torch.multinomial(weights, 1).squeeze().tolist()
-        z[:, :, :] = Z[np.arange(batch_size), :, indices, :]
+        z = Z[np.arange(batch_size), :, indices, :]
+        z = z.data
+        z.requires_grad_(True)
         
-        z_sp.append(z.detach().clone()) 
+    z_sp.append(z.detach().clone()) 
     return z_sp
 
 
 def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_scale):
-    #z - tensor (bs, T + 1, dim)
     z_sp = []
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1
@@ -221,7 +227,8 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
         
         for t in range(1, T + 1):
             #print(f"t = {t}")
-            not_equal_mask = (torch.norm(z[:, t, :] - z[:, t - 1, :], p=2, dim=-1) > 1e-13)
+            #not_equal_mask = (torch.norm(z[:, t, :] - z[:, t - 1, :], p=2, dim=-1) > 1e-13)
+            not_equal_mask = torch.ne(z[:, t, :], z[:, t - 1, :]).max(dim=-1)[0]
             equal_mask = ~not_equal_mask             
             
             num_not_equal = not_equal_mask.sum()
@@ -247,6 +254,7 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
 
                 v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step)*z_t_1_not_equal \
                                                             + grad_step*betas[t]*grad_point1)/eps_scale
+
                 #print(log_probs.shape)
                 probs = compute_probs_from_log_probs(log_probs)
                 generate_uniform_var = uniform.sample([probs.shape[0]]).to(probs.device)
@@ -304,8 +312,6 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                     
                     if updates_num == num_equal:
                         stop = True
-                    #break
-                #print(l)
             
             kappa[:, t, :] = rhos[t]*v[:, t, 0, :] + ((1 - rhos[t]**2)**0.5) * kappa_t_noise[:, t, :]
         #print("end step 1")   
@@ -336,10 +342,10 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
             #grad_z_t_1_j = grad_z_t_1_j_flatten.reshape(z_t_1_j_shape)
             grad_z_t_1_j = torch.transpose(grad_z_t_1_j_flatten.reshape(list(z_t_1_j_shape[:-1][::-1]) + [z_t_1_j_shape[-1]]), 0, 1)
 
-            p_t_j = (1. - grad_step)*Z[:, t - 1, 1:, :] - grad_step*betas[t]*grad_z_t_1_j \
-                                                    + eps_scale*v[:, t, 1:, :]
             Z_t_1_j = Z[:, t - 1, 1:, :]
             Z_t_1_j_shape = Z_t_1_j.shape
+            p_t_j = (1. - grad_step)*Z_t_1_j - grad_step*betas[t]*grad_z_t_1_j \
+                                                    + eps_scale*v[:, t, 1:, :]
             
             #p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
             p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
@@ -357,7 +363,8 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                                                       grad_step, 
                                                       eps_scale)
             probs_flatten = compute_probs_from_log_probs(log_probs)
-            probs = probs_flatten.view(batch_size, N - 1)
+            #probs = probs_flatten.view(batch_size, N - 1)
+            probs = probs_flatten.reshape(N - 1, batch_size).T
             u_t_1 = u[:, t, 0].unsqueeze(1).repeat(1, N - 1)
             
             mask_leq = (u_t_1 <= probs)
