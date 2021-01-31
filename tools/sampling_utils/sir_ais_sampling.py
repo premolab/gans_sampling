@@ -3,6 +3,7 @@ import torch, torch.nn as nn
 import torch.nn.functional as F
 import random
 import sklearn
+from tqdm import trange
 
 from distributions import (Target, 
                            Gaussian_mixture, 
@@ -270,7 +271,9 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                 z_t_1_equal = z_t_1_equal.detach().clone()
                 z_t_1_equal.requires_grad_(True)
                 #print("start to while sampling")
+                l = 0
                 while not stop:
+                    l += 1
                     cur_u = uniform.sample([num_equal]).to(z_t_equal.device)
                     cur_v = proposal.sample([num_equal]).to(z_t_equal.device)
                     second_part = second_part_no_noise + cur_v*eps_scale
@@ -285,7 +288,8 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                                                               grad_step, 
                                                               eps_scale)
                     probs = compute_probs_from_log_probs(log_probs)
-                    mask_assign = (cur_u > probs)
+                    #mask_assign = (cur_u > probs)
+                    mask_assign = (cur_u <= probs)
                     new_assign = torch.logical_and(mask_assign, ~update_mask) 
                     #print(new_assign.shape)
                     #print(u.shape)
@@ -294,15 +298,14 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
                     u[equal_mask, t, 0][new_assign] = cur_u[new_assign]
                     v[equal_mask, t, 0, :][new_assign] = cur_v[new_assign]
                     
-                    
                     update_mask = torch.logical_or(update_mask, new_assign)
                     updates_num = update_mask.sum()
-                    
                     #print(f"update_mask = {updates_num}")
-                    
                     
                     if updates_num == num_equal:
                         stop = True
+                    #break
+                #print(l)
             
             kappa[:, t, :] = rhos[t]*v[:, t, 0, :] + ((1 - rhos[t]**2)**0.5) * kappa_t_noise[:, t, :]
         #print("end step 1")   
@@ -327,7 +330,6 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
             z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
             #z_t_1_j_flatten = Z[:, t - 1, 1:, :].reshape(-1, z_dim).detach().clone()
             z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
-
             z_t_1_j_flatten.requires_grad_(True)
             
             _, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
@@ -385,7 +387,6 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
             
             log_weights[t - 1, :, :] = -(betas[t] - betas[t - 1])*E
             
-        
         log_weights = log_weights.sum(axis = 0)
         max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
         log_weights = log_weights - max_logs
@@ -397,8 +398,7 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
         weights[weights.sum(1) == 0.] = 1.
         
         indices = torch.multinomial(weights, 1).squeeze().tolist()
-        z[:, :, :] = Z[np.arange(batch_size), :, indices, :]
-        
+        z = Z[np.arange(batch_size), :, indices, :]
         #print("end step4")
         
     z_sp.append(z.detach().clone()) 
