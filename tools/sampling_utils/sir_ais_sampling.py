@@ -93,10 +93,10 @@ def compute_log_probs(point1, point2, target, proposal, beta, grad_step, eps_sca
     E_point1, grad_point1 = grad_energy(point1, target, x=None)
     E_point2, grad_point2 = grad_energy(point2, target, x=None)
     
-    energy_part = beta*(E_point1 - E_point2)
+    energy_part = beta * (E_point1 - E_point2)
     
-    propose_vec_1 = point1 - point2 + grad_step*beta*grad_point2
-    propose_vec_2 = point2 - point1 + grad_step*beta*grad_point1
+    propose_vec_1 = point1 - (1. - grad_step) * point2 + beta*grad_step*grad_point2
+    propose_vec_2 = point2 - (1. - grad_step) * point1 + beta*grad_step*grad_point1
     
     propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
     propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
@@ -130,6 +130,7 @@ def ais_vanilla(z, target, proposal, n_steps, N, betas, grad_step, eps_scale):
         Z[:, 0, 1:, :] = W ###Random initial points
         W_2 = proposal.sample([batch_size, T, N - 1]) ##Innovation noise during all trjacetories except current one
         for t in range(1, T + 1):
+            # target_t = lambda x : betas[t] * target(x)
             #print(f"t = {t}")
             v[:, t, 1:, :] = W_2[:, t - 1, :, :]
             z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
@@ -143,7 +144,7 @@ def ais_vanilla(z, target, proposal, n_steps, N, betas, grad_step, eps_scale):
 
             Z_t_1_j = Z[:, t - 1, 1:, :]
             Z_t_1_j_shape = Z_t_1_j.shape
-            p_t_j = Z_t_1_j - grad_step*betas[t]*grad_z_t_1_j + eps_scale*v[:, t, 1:, :]
+            p_t_j = (1. - grad_step) * Z_t_1_j - grad_step * betas[t] * grad_z_t_1_j + eps_scale*v[:, t, 1:, :]
             
             p_t_j_flatten = p_t_j.view(-1, z_dim).detach().clone()
             p_t_j_flatten.requires_grad_(True)
@@ -155,8 +156,8 @@ def ais_vanilla(z, target, proposal, n_steps, N, betas, grad_step, eps_scale):
             _, _, _, _, log_probs = compute_log_probs(Z_t_1_j_flatten, 
                                                       p_t_j_flatten, 
                                                       target, 
-                                                      proposal, 
-                                                      betas[t], 
+                                                      proposal,
+                                                      betas[t],  
                                                       grad_step, 
                                                       eps_scale)
             probs_flatten = compute_probs_from_log_probs(log_probs)
@@ -177,6 +178,7 @@ def ais_vanilla(z, target, proposal, n_steps, N, betas, grad_step, eps_scale):
         log_weights = torch.zeros((T, batch_size, N), dtype = z.dtype).to(z.device)
             
         for t in range(1, T + 1):
+            #target_t = lambda x : betas[t] * target(x)
             cur_z = Z[:, t - 1, :, :]
             
             z_flatten = cur_z.reshape(-1, z_dim)
@@ -212,7 +214,7 @@ def ais_dynamics(z, target, proposal, n_steps, N, betas, rhos, grad_step, eps_sc
     T = T - 1
     uniform = Uniform(low = 0.0, high = 1.0)
     
-    for _ in range(n_steps):
+    for _ in trange(n_steps):
         #print(f"iter = {_}")
         z_sp.append(z.detach().clone())
         v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
