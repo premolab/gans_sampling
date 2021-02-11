@@ -21,7 +21,8 @@ from pyro.infer import MCMC, NUTS, HMC
 from functools import partial
 from tqdm import tqdm, trange
 from easydict import EasyDict as edict
-    
+
+
 def grad_energy(point, target, x=None):
     point = point.detach().requires_grad_()
     if x is not None:
@@ -30,6 +31,7 @@ def grad_energy(point, target, x=None):
         energy = -target(point)
     grad = torch.autograd.grad(energy.sum(), point)[0]
     return energy, grad    
+
 
 def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob=False):
     generator_points = generator(z)
@@ -41,14 +43,39 @@ def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob
                      torch.log1p(-sigmoid_gan_part)).view(-1)
         
     proposal_part = -proposal.log_prob(z)
-    # print(z.shape)
-    # print(proposal_part.shape)
-    # print(gan_part.shape)
+
     energy = gan_part + proposal_part
     if not log_prob:
        return energy
     else:
        return -energy
+
+
+def sampling_f(dynamics, target, proposal, batch_size, n, *args, **kwargs):
+    z_last = []
+    zs = []
+    for i in tqdm(range(0, n, batch_size)):
+        z = proposal.sample([batch_size])
+        z.requires_grad_(True)
+        out = dynamics(z, target, proposal, *args, **kwargs)
+        if isinstance(out, tuple):
+            z_sp = out[0]
+        else:
+            z_sp = out
+        last = z_sp[-1].data.cpu().numpy()
+        z_last.append(last)
+        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
+
+    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
+    zs = np.stack(zs, axis=0)
+    return z_last_np, zs
+
+
+def sampling_from_dynamics(dynamics):
+    samling_dynamics_f = lambda target, proposal, batch_size, n, *args, **kwargs: \
+                        sampling_f(dynamics, target, proposal, batch_size, n, *args, **kwargs)
+    return samling_dynamics_f
+
 
 def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
     z_sp = []
@@ -65,20 +92,9 @@ def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
     z_sp.append(z)
     return z_sp
 
-def langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size):
-    z_last = []
-    zs = []
-    for i in tqdm(range(0, n, batch_size)):
-        z = proposal.sample([batch_size])
-        z.requires_grad_(True)
-        z_sp = langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale)
-        last = z_sp[-1].data.cpu().numpy()
-        z_last.append(last)
-        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
 
-    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
-    zs = np.stack(zs, axis=0)
-    return z_last_np, zs
+langevin_sampling = sampling_from_dynamics(langevin_dynamics)
+
     
 def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance_rule='Hastings'):
     z_sp = [z.clone().detach()]
@@ -128,21 +144,9 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance
             z_sp.append(z.clone().detach())
         
     return z_sp, acceptence
-    
-def mala_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, acceptance_rule='Hastings'):
-    z_last = []
-    zs = []
-    for i in tqdm(range(0, n, batch_size)):
-        z = proposal.sample([batch_size])
-        z.requires_grad_(True)
-        z_sp, acceptence = mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance_rule=acceptance_rule)
-        last = z_sp[-1].data.cpu().numpy()
-        z_last.append(last)
-        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
 
-    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
-    zs = np.stack(zs, axis=0)
-    return z_last_np, zs
+
+mala_sampling = sampling_from_dynamics(mala_dynamics)
 
 
 def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N):
@@ -163,23 +167,6 @@ def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N
         g_N = g.unsqueeze(1).repeat(1, N, 1)
         X = g_N + eps_scale*noise
         X[np.arange(batch_size), U, :] = y
-
-        # X_batch = X.view((batch_size*N, z_dim)).detach().clone()
-        # X_batch.requires_grad_(True)
-        # minus_log_pi_x, minus_g_log_pi_x = grad_energy(X_batch, target, x=None)
-        # T_x = X_batch - grad_step * minus_g_log_pi_x
-        # T_x = T_x.reshape(X.shape)
-        # minus_log_pi_x = minus_log_pi_x.reshape(X.shape[:-1])
-        # log_gauss = -(X[:, None, :] - T_x[:, :, None]).norm(p=2, dim=-1)**2 / (2 * eps_scale**2)
-        # sum_log_gauss = log_gauss.sum(1) - torch.diagonal(log_gauss, dim1=1, dim2=2)
-        
-        # log_weight = -minus_log_pi_x + sum_log_gauss
-
-        # max_logs = torch.max(log_weight, dim = 1)[0].unsqueeze(-1).repeat((1, N))
-        # log_weight = log_weight - max_logs
-        # weight = torch.exp(log_weight)
-        # sum_weight = torch.sum(weight, dim = 1).unsqueeze(-1).repeat((1, N))
-        # weight = weight/sum_weight
 
         X_batch = torch.transpose(X, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
 
@@ -213,77 +200,66 @@ def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N
     return y_arr   
 
 
-def xtry_langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, N, n, batch_size):
-    z_last = []
-    zs = []
-    for i in tqdm(range(0, n, batch_size)):
-        z = proposal.sample([batch_size])
-        z.requires_grad_(True)
-        z_sp = xtry_langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N)
-        last = z_sp[-1].data.cpu().numpy()
-        z_last.append(last)
-        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
+class MH_Transition(object):
+    def __init__(self, z_dim, device):
+        self.device = device
+        self.z_dim = z_dim
+        self.uniform = Uniform(low = 0.0, high = 1.0)
 
-    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
-    zs = np.stack(zs, axis=0)
-    return z_last_np, zs
-
-
-def get_mh_kernel_log_prob(log_pi1, log_pi2, log_transition_forward, log_transition_backward):
-    return (log_pi2 + log_transition_backward) - (log_pi1 + log_transition_forward)
+        loc = torch.zeros(z_dim).to(device)
+        scale = torch.ones(z_dim).to(device)
+        dist_args = edict()
+        dist_args.device = device
+        dist_args.loc = loc
+        dist_args.scale = scale
+        self.stand_normal = IndependentNormal(dist_args)
 
 
-def get_langevin_transition_kernel(z1, z2, grad, grad_step, sigma, stand_normal=None):
-    loc = z2 - (z1 - grad_step*grad)
-    log_prob = stand_normal.log_prob(loc/sigma)
-    return log_prob
+    def get_mh_kernel_log_prob(self, log_pi1, log_pi2, log_transition_forward, log_transition_backward):
+        return (log_pi2 + log_transition_backward) - (log_pi1 + log_transition_forward)
 
 
-def do_transition_step(z, z_new, energy, grad, grad_step, sigma, stand_normal=None, uniform=None, target=None, beta=1.0):
-    energy_new, grad_new = grad_energy(z_new, target, x=None)
-    log_transition_forward = get_langevin_transition_kernel(z, z_new, grad, beta * grad_step, sigma, stand_normal)
-    log_transition_backward = get_langevin_transition_kernel(z_new, z, grad_new, beta * grad_step, sigma, stand_normal)
-    acc_log_prob = get_mh_kernel_log_prob(-beta * energy, -beta * energy_new, log_transition_forward, log_transition_backward)
-    
-    generate_uniform_var = uniform.sample([z.shape[0]]).to(z.device)
-    log_generate_uniform_var = torch.log(generate_uniform_var)
-    mask = log_generate_uniform_var < acc_log_prob
-    
-    with torch.no_grad():
-        z[mask] = z_new[mask].detach().clone()
-        z = z.data
-        z.requires_grad_(True)
-        energy[mask] = energy_new[mask]
-        energy[~mask] = energy[~mask]
+    def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma):
+        loc = z2 - (z1 - grad_step * grad)
+        log_prob = self.stand_normal.log_prob(loc/sigma)
+        return log_prob
+
+
+    def compute_log_probs(self, z, z_new, energy, grad, grad_step, sigma, target=None, beta=1.0):
+        energy_new, grad_new = grad_energy(z_new, target, x=None)
+        log_transition_forward = self.get_langevin_transition_kernel(z, z_new, grad, beta * grad_step, sigma)
+        log_transition_backward = self.get_langevin_transition_kernel(z_new, z, grad_new, beta * grad_step, sigma)
+        log_prob = self.get_mh_kernel_log_prob(-beta * energy, -beta * energy_new, log_transition_forward, log_transition_backward)
+        return log_prob, energy_new, grad_new
+
+
+    def do_transition_step(self, z, z_new, energy, grad, grad_step, sigma, target=None, beta=1.0):
+        acc_log_prob, energy_new, grad_new = self.compute_log_probs(z, z_new, energy, grad, grad_step, sigma, target, beta)
         
-        grad[mask] = grad_new[mask]
-        grad[~mask] = grad[~mask]
+        generate_uniform_var = self.uniform.sample([z.shape[0]]).to(z.device)
+        log_generate_uniform_var = torch.log(generate_uniform_var)
+        mask = log_generate_uniform_var < acc_log_prob
+        
+        with torch.no_grad():
+            z[mask] = z_new[mask].detach().clone()
+            z = z.data
+            z.requires_grad_(True)
+            energy = energy.float()
+            energy[mask] = energy_new[mask].float()
+            energy[~mask] = energy[~mask]
+            
+            grad[mask] = grad_new[mask]
+            grad[~mask] = grad[~mask]
 
-    return z, energy, grad
-
-def compute_log_probs(z, z_new, energy, grad, grad_step, sigma, stand_normal=None, uniform=None, target=None, beta=1.0):
-    energy_new, grad_new = grad_energy(z_new, target, x=None)
-    log_transition_forward = get_langevin_transition_kernel(z, z_new, grad, beta * grad_step, sigma, stand_normal)
-    log_transition_backward = get_langevin_transition_kernel(z_new, z, grad_new, beta * grad_step, sigma, stand_normal)
-    log_prob = get_mh_kernel_log_prob(-beta * energy, -beta * energy_new, log_transition_forward, log_transition_backward)
-
-    return log_prob#, energy, grad
+        return z, energy, grad
 
 
-def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, *betas):
+def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, betas):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
 
-    uniform = Uniform(low = 0.0, high = 1.0)
-
-    loc = torch.zeros(z_dim).to(device)
-    scale = torch.ones(z_dim).to(device)
-    dist_args = edict()
-    dist_args.device = device
-    dist_args.loc = loc
-    dist_args.scale = scale
-    stand_normal = IndependentNormal(dist_args)
+    mh_transition = MH_Transition(z_dim, device)
 
     acceptence = torch.zeros(batch_size).to(device)
 
@@ -296,14 +272,14 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
         energy_forward = torch.zeros(batch_size, len(betas)-1)
         energy_forward[:, 0] = E0
 
-        E = E0#.data #.detach().clone()
-        grad = grad0#.data #detach().clone()
+        E = E0  #.data #.detach().clone()
+        grad = grad0  #.data #detach().clone()
         
         for i, beta in enumerate(betas[1:-1]):
             eps = eps_scale * proposal.sample([batch_size])
 
             z_forward_new = z_forward - grad_step * beta * grad + eps
-            z_forward, E, grad = do_transition_step(z_forward, z_forward_new, E, grad, grad_step, eps_scale, stand_normal, uniform, target, beta=beta)
+            z_forward, E, grad = mh_transition.do_transition_step(z_forward, z_forward_new, E, grad, grad_step, eps_scale, target, beta=beta)
             energy_forward[:, i+1] = E
 
         z_backward = z_forward.clone().detach()
@@ -314,7 +290,7 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
             eps = eps_scale * proposal.sample([batch_size])
 
             z_backward_new = z_backward - grad_step * beta * grad + eps
-            z_backward, E, grad = do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, stand_normal, uniform, target, beta=beta)
+            z_backward, E, grad = mh_transition.do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, target, beta=beta)
             j = len(betas) - i - 3
             energy_backward[:, j] = E
 
@@ -322,7 +298,7 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
         F_backward = (betas_diff * energy_backward).sum(-1)
         log_accept_prob = F_forward - F_backward
         
-        generate_uniform_var = uniform.sample([batch_size]).to(z.device)
+        generate_uniform_var = mh_transition.uniform.sample([batch_size]).to(z.device)
         log_generate_uniform_var = torch.log(generate_uniform_var)
         mask = log_generate_uniform_var < log_accept_prob
         
@@ -333,47 +309,24 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
             z.requires_grad_(True)
             z_sp.append(z.clone().detach())
 
-            E0[mask] = E[mask]#.data #detach().clone()
-            #E0.requires_grad_(True)
+            E0[mask] = E[mask].data
             
-            grad0[mask] = grad[mask].data #detach().clone()
+            grad0[mask] = grad[mask].data
             grad0.requires_grad_(True)
 
         
     return z_sp, acceptence
 
 
-def tempered_transitions_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, betas):
-    z_last = []
-    zs = []
-    for i in tqdm(range(0, n, batch_size)):
-        z = proposal.sample([batch_size])
-        z.requires_grad_(True)
-        z_sp, acceptence = tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, *betas)
-        last = z_sp[-1].data.cpu().numpy()
-        z_last.append(last)
-        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
-
-    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
-    zs = np.stack(zs, axis=0)
-    return z_last_np, zs
+tempered_transitions_sampling = sampling_from_dynamics(tempered_transitions_dynamics)
 
 
-def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, *betas):
+def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
 
-    uniform = Uniform(low = 0.0, high = 1.0)
-
-    loc = torch.zeros(z_dim).to(device)
-    scale = torch.ones(z_dim).to(device)
-    dist_args = edict()
-    dist_args.device = device
-    dist_args.loc = loc
-    dist_args.scale = scale
-    stand_normal = IndependentNormal(dist_args)
-
+    mh_transition = MH_Transition(z_dim, device)
     acceptence = torch.zeros(batch_size).to(device)
 
     betas = np.array(betas)
@@ -392,7 +345,7 @@ def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, 
         z_backward = z_batch
         z_backward.requires_grad_(True)
         energy_backward = torch.zeros(batch_size, N, len(betas)-1) # n-1
-        energy_backward[..., len(betas)-2] = E#.detach().clone() #E_.detach().clone()
+        energy_backward[..., len(betas)-2] = E #.detach().clone()
         
         E = E.T.reshape(-1)
         for i, beta in enumerate(betas[::-1][1:-1]):  #betas[0] = 1, betas[n-1] = 0, betas[::-1][1:-1] - increasing, lenghts is n-2
@@ -400,7 +353,7 @@ def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, 
             eps = eps_scale * proposal.sample([batch_size*N])
 
             z_backward_new = z_backward - beta * grad_step * grad + eps
-            z_backward, E, grad = do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, stand_normal, uniform, target, beta=beta)
+            z_backward, E, grad = mh_transition.do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, target, beta=beta)
             
             E_ = E.reshape(Z.shape[:-1][::-1]).T
             energy_backward[..., j] = E_.detach().clone()
@@ -435,39 +388,17 @@ def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, 
     return z_sp
 
 
-def ais_vanilla_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas):
-    z_last = []
-    zs = []
-    for i in tqdm(range(0, n, batch_size)):
-        z = proposal.sample([batch_size])
-        z.requires_grad_(True)
-        z_sp = ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, *betas)
-        last = z_sp[-1].data.cpu().numpy()
-        z_last.append(last)
-        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
-
-    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
-    zs = np.stack(zs, axis=0)
-    return z_last_np, zs
+ais_vanilla_sampling = sampling_from_dynamics(ais_vanilla_dynamics)
 
 
 def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos):
-    z_sp = [z.clone().detach()]
+    z_sp = [z[:, -1, :].clone().detach()]
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1  #??
     # T = len(betas) - 2
     device = z.device
 
-    uniform = Uniform(low = 0.0, high = 1.0)
-
-    loc = torch.zeros(z_dim).to(device)
-    scale = torch.ones(z_dim).to(device)
-    dist_args = edict()
-    dist_args.device = device
-    dist_args.loc = loc
-    dist_args.scale = scale
-    stand_normal = IndependentNormal(dist_args)
-
+    mh_transition = MH_Transition(z_dim, device)
     acceptence = torch.zeros(batch_size).to(device)
 
     betas = np.array(betas)
@@ -503,7 +434,6 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
             num_equal = equal_mask.sum()
             
             if num_not_equal > 0:
-                #print(f"start to do updates for not equal batches")
                 z_t_not_equal = z[not_equal_mask, t, :].detach().clone()
                 z_t_1_not_equal = z[not_equal_mask, t - 1, :].detach().clone()
                 z_t_not_equal.requires_grad_(True)
@@ -513,11 +443,11 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                 E_t_1_not_equal = E[not_equal_mask, t - 1]
                 grad_t_1_not_equal = grad[not_equal_mask, t - 1, :]
                 
-                log_probs = compute_log_probs(z_t_1_not_equal, 
+                log_probs, _, _ = mh_transition.compute_log_probs(z_t_1_not_equal, 
                                                 z_t_not_equal, 
                                                 E_t_1_not_equal, 
                                                 grad_t_1_not_equal, 
-                                                grad_step, eps_scale, stand_normal, uniform, target, beta=beta)
+                                                grad_step, eps_scale, target, beta=beta)
                 
 
                 # v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step)*z_t_1_not_equal \
@@ -525,10 +455,10 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                 v[not_equal_mask, t, 0, :] = (z_t_not_equal - z_t_1_not_equal + grad_step * beta * grad_t_1_not_equal)/eps_scale
 
                 probs = compute_probs_from_log_probs(log_probs)
-                generate_uniform_var = uniform.sample([probs.shape[0]]).to(probs.device)
+                generate_uniform_var = mh_transition.uniform.sample([probs.shape[0]]).to(probs.device)
                 weight_uniform_var = generate_uniform_var * probs
 
-                u[not_equal_mask, t, 0] = weight_uniform_var
+                u[not_equal_mask, t, 0] = weight_uniform_var.float()
             
             if num_equal > 0:
                 z_t_equal = z[equal_mask, t, :]
@@ -547,21 +477,19 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                 update_mask = torch.zeros(num_equal, dtype = torch.bool).to(z_t_equal.device)
                 z_t_1_equal = z_t_1_equal.detach().clone()
                 z_t_1_equal.requires_grad_(True)
-                #print("start to while sampling")
-                l = 0
+
                 while not stop:
-                    l += 1
-                    cur_u = uniform.sample([num_equal]).to(z_t_equal.device)
+                    cur_u = mh_transition.uniform.sample([num_equal]).to(z_t_equal.device)
                     cur_v = proposal.sample([num_equal]).to(z_t_equal.device)
                     second_part = second_part_no_noise + cur_v*eps_scale
                     second_part = second_part.detach().clone()
                     second_part.requires_grad_(True)
                     
-                    log_probs = compute_log_probs(z_t_1_equal, 
+                    log_probs, _, _ = mh_transition.compute_log_probs(z_t_1_equal, 
                                                     second_part, 
                                                     E_t_1_equal, 
                                                     grad_t_1_equal, 
-                                                    grad_step, eps_scale, stand_normal, uniform, target, beta=beta)
+                                                    grad_step, eps_scale, target, beta=beta)
 
                     probs = compute_probs_from_log_probs(log_probs)
                     mask_assign = (cur_u <= probs)
@@ -638,11 +566,11 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
             Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
             Z_t_1_j_flatten.requires_grad_(True)
             
-            z_t, E_t, grad_t = do_transition_step(Z_t_1_j_flatten, 
+            z_t, E_t, grad_t = mh_transition.do_transition_step(Z_t_1_j_flatten, 
                                             p_t_j_flatten, 
                                             E_z_t_1_j_flatten, 
                                             grad_z_t_1_j_flatten, 
-                                            grad_step, eps_scale, stand_normal, uniform, target, beta)
+                                            grad_step, eps_scale, target, beta)
 
             z_t = torch.transpose(z_t.reshape(N - 1, batch_size, z_dim), 0, 1)
             E_t = E_t.reshape(N - 1, batch_size).T
@@ -651,7 +579,6 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
             energy[:, t, 1:] = E_t.detach().clone()
             grads[:, t, 1:, :] = grad_t.detach().clone()
             
-        #print("start step3")
         log_weights = -(betas_diff[None, :, None] * energy[:, 1:, :]).sum(1)
             
         max_logs = torch.max(log_weights, dim = 1)[0]
@@ -666,7 +593,22 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
         z = Z[np.arange(batch_size), :, indices, :]
         E = energy[np.arange(batch_size), :, indices]
         grad = grads[np.arange(batch_size), :, indices, :]
-        #print("end step4")
-        z_sp.append(z.detach().clone())
+        z_sp.append(z[:, -1, :].detach().clone())
 
     return z_sp
+
+
+def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos):
+    z_last = []
+    zs = []
+    for i in tqdm(range(0, n, batch_size)):
+        z = proposal.sample([batch_size, len(betas)])
+        z.requires_grad_(True)
+        z_sp = ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
+        last = z_sp[-1].data.cpu().numpy()
+        z_last.append(last)
+        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
+
+    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
+    zs = np.stack(zs, axis=0)
+    return z_last_np, zs
