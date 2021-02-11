@@ -496,7 +496,7 @@ def run_experiments_gaussians(dim_arr,
       all_history_np = torch.stack(history, axis = 0).cpu().numpy()
 
       result_np = torch.stack(last_history, axis = 0).cpu().numpy()
-      print(result_np.shape)
+      #print(result_np.shape)
       if strategy_mean == 'starts':
          result_var = np.var(result_np, axis = 1, ddof=1).mean(axis = 0).mean()
          result_mean = np.mean(result_np, axis = 1).mean(axis = 0).mean()
