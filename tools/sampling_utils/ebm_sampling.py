@@ -411,6 +411,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
         return probs
 
     z_flat = torch.transpose(z, 0, 1).reshape((batch_size*z.shape[1], z_dim)).detach().clone()
+    z_flat.requires_grad_(True)
     E_flat, grad_flat = grad_energy(z_flat, target, None)
     grad = torch.transpose(grad_flat.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1).detach().clone()
     E = E_flat.reshape(z.shape[:-1][::-1]).T.data
