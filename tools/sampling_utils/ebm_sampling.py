@@ -402,7 +402,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
     acceptence = torch.zeros(batch_size).to(device)
 
     betas = np.array(betas)
-    betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]) #n-1
+    betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]).to(device) #n-1
 
     def compute_probs_from_log_probs(log_probs):
         mask_zeros = log_probs > 0.
@@ -417,11 +417,11 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
     E = E_flat.reshape(z.shape[:-1][::-1]).T.data
 
     for _ in trange(n_steps):
-        v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
-        u = torch.zeros((batch_size, T + 1, N), dtype = z.dtype).to(z.device)
+        v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
+        u = torch.zeros((batch_size, T + 1, N), dtype = z.dtype).to(device)
 
         #step 1
-        kappa = torch.zeros((batch_size, T + 1, z_dim), dtype = z.dtype).to(z.device)
+        kappa = torch.zeros((batch_size, T + 1, z_dim), dtype = z.dtype).to(device)
         kappa_t_noise = proposal.sample([batch_size, T + 1])
         kappa[:, 0, :] = rhos[-1]*z[:, 0, :] + ((1 - rhos[-1]**2)**0.5) * kappa_t_noise[:, 0, :]
         
@@ -509,7 +509,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
         #step 2
         W = proposal.sample([batch_size, N - 1])
         #Z - tensor (bs, T + 1, N, dim)
-        Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(z.device)
+        Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
         
         kappa_repeat = kappa[:, 0, :].unsqueeze(1).repeat(1, N - 1, 1)
         kappa_N_noise = proposal.sample([batch_size, N - 1])
@@ -523,7 +523,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
         kappa_E = kappa_E_flat.reshape(N-1, batch_size).T
         kappa_grad = torch.transpose(kappa_grad_flat.reshape(N-1, batch_size, z_dim), 0, 1)
         
-        energy = torch.zeros(batch_size, T+1, N)
+        energy = torch.zeros(batch_size, T+1, N).to(device)
         
         #z_flat = torch.transpose(z, 0, 1).reshape((batch_size*(T+1), z_dim)).detach().clone()
         #E_flat, grad_flat = grad_energy(z_flat, target, None)
@@ -533,7 +533,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
         energy[:, :, 0] = E.data
         energy[:, 0, 1:] = kappa_E
 
-        grads = torch.zeros(batch_size, T+1, N, z_dim)
+        grads = torch.zeros(batch_size, T+1, N, z_dim).to(device)
         grads[:, :, 0, :] = grad.detach().clone()
         grads[:, 0, 1:, :] = kappa_grad
         
@@ -545,13 +545,13 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
 
             v[:, t, 1:, :] = rho*kappa_repeat_N[:, t - 1, :, :] + ((1 - rho**2)**0.5) * W_2[:, t - 1, :, :]
             z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
-            z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
+            z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             z_t_1_j_flatten.requires_grad_(True)
             
             #_, grad_z_t_1_j_flatten = grad_energy(z_t_1_j_flatten, target, x=None)
             #grad_z_t_1_j = torch.transpose(grad_z_t_1_j_flatten.reshape(list(z_t_1_j_shape[:-1][::-1]) + [z_t_1_j_shape[-1]]), 0, 1)
             grad_z_t_1_j = grads[:, t - 1, 1:, :]
-            grad_z_t_1_j_flatten = torch.transpose(grad_z_t_1_j, 0, 1).reshape((batch_size*(N - 1), z_dim)).detach().clone()
+            grad_z_t_1_j_flatten = torch.transpose(grad_z_t_1_j, 0, 1).reshape((batch_size*(N - 1), z_dim)).detach().clone().to(device)
             E_z_t_1_j = energy[:, t - 1, 1:]
             E_z_t_1_j_flatten = E_z_t_1_j.T.reshape(batch_size*(N - 1))
 
@@ -561,12 +561,16 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
             #                                         + eps_scale*v[:, t, 1:, :]
             p_t_j = Z_t_1_j - grad_step*beta*grad_z_t_1_j  + eps_scale*v[:, t, 1:, :]
             
-            p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
+            p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             p_t_j_flatten.requires_grad_(True)
             
-            Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
+            Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             Z_t_1_j_flatten.requires_grad_(True)
             
+            #print(Z_t_1_j_flatten.device)
+            #print(p_t_j_flatten.device)
+            #print(E_z_t_1_j_flatten.device)
+            #print(grad_z_t_1_j_flatten.device)
             z_t, E_t, grad_t = mh_transition.do_transition_step(Z_t_1_j_flatten, 
                                             p_t_j_flatten, 
                                             E_z_t_1_j_flatten, 
