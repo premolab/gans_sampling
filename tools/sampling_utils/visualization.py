@@ -15,8 +15,7 @@ from general_utils import send_file_to_remote
 
 from mh_sampling import mh_sampling
 from ebm_sampling import (langevin_sampling, 
-                          mala_sampling, 
-                          xtry_langevin_sampling,
+                          mala_sampling,
                           gan_energy)
 
 figsize=(8,8)
@@ -288,33 +287,33 @@ def mala_sampling_plot_2d(target,
                         port_to_remote = port_to_remote,
                         params = params)
                         
-def xtry_langevin_sampling_plot_2d(target,
-                                   proposal,
-                                   X_train,  
-                                   path_to_save = None,
-                                   scaler = None, 
-                                   batch_size_sample = 5000,
-                                   path_to_save_remote = None,
-                                   port_to_remote = None,
-                                   N = 2,
-                                   grad_step = 1e-3,
-                                   eps_scale = 1e-2,
-                                   n_steps = 5000,
-                                   n_batches = 1,
-                                   latent_transform = None):
-    batchsize = batch_size_sample // n_batches
-    X_xtry_langevin, zs = xtry_langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, N, batch_size_sample, batchsize)
-    if latent_transform is not None:
-        X_xtry_langevin = torch.FloatTensor(X_xtry_langevin).to(proposal.device)
-        X_xtry_langevin = latent_transform(X_xtry_langevin).data.cpu().numpy()
-    mode = 'X-Try-ULA'
-    params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}, N = {N}'
-    plot_fake_data_mode(X_xtry_langevin, X_train, mode, 
-                        path_to_save = path_to_save, 
-                        scaler = scaler,
-                        path_to_save_remote = path_to_save_remote,
-                        port_to_remote = port_to_remote,
-                        params = params)                        
+# def xtry_langevin_sampling_plot_2d(target,
+#                                    proposal,
+#                                    X_train,  
+#                                    path_to_save = None,
+#                                    scaler = None, 
+#                                    batch_size_sample = 5000,
+#                                    path_to_save_remote = None,
+#                                    port_to_remote = None,
+#                                    N = 2,
+#                                    grad_step = 1e-3,
+#                                    eps_scale = 1e-2,
+#                                    n_steps = 5000,
+#                                    n_batches = 1,
+#                                    latent_transform = None):
+#     batchsize = batch_size_sample // n_batches
+#     X_xtry_langevin, zs = xtry_langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, N, batch_size_sample, batchsize)
+#     if latent_transform is not None:
+#         X_xtry_langevin = torch.FloatTensor(X_xtry_langevin).to(proposal.device)
+#         X_xtry_langevin = latent_transform(X_xtry_langevin).data.cpu().numpy()
+#     mode = 'X-Try-ULA'
+#     params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}, N = {N}'
+#     plot_fake_data_mode(X_xtry_langevin, X_train, mode, 
+#                         path_to_save = path_to_save, 
+#                         scaler = scaler,
+#                         path_to_save_remote = path_to_save_remote,
+#                         port_to_remote = port_to_remote,
+#                         params = params)                        
 
 def mh_sampling_plot_2d(generator, 
                         discriminator,
