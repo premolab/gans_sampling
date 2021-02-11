@@ -246,7 +246,7 @@ def langevin_sampling_plot_2d(target,
                               n_batches = 1,
                               latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_langevin, zs = langevin_sampling(target, proposal, n_steps, grad_step, eps_scale, batch_size_sample, batchsize)
+    X_langevin, zs = langevin_sampling(target, proposal, batchsize, batch_size_sample, n_steps, grad_step, eps_scale)
     if latent_transform is not None:
         X_langevin = torch.FloatTensor(X_langevin).to(proposal.device)
         X_langevin = latent_transform(X_langevin).data.cpu().numpy()
@@ -274,7 +274,7 @@ def mala_sampling_plot_2d(target,
                           acceptance_rule = 'Hastings',
                           latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_mala, zs = mala_sampling(target, proposal, n_steps, grad_step, eps_scale, batch_size_sample, batchsize, acceptance_rule=acceptance_rule)
+    X_mala, zs = mala_sampling(target, proposal, batchsize, batch_size_sample, n_steps, grad_step, eps_scale, acceptance_rule)
     if latent_transform is not None:
         X_mala = torch.FloatTensor(X_mala).to(proposal.device)
         X_mala = latent_transform(X_mala).data.cpu().numpy()
