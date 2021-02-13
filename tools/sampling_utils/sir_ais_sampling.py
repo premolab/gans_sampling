@@ -479,26 +479,35 @@ def run_experiments_gaussians(dim_arr,
                               method_params['rhos'], )
          #history = [history[i][:, -1, :] for i in range(len(history))]
 
-      elif method == 'vanilla_ais':
-         history = ebm_sampling.ais_vanilla_dynamics(start, 
+      elif method == 'i_ais_z':
+         history = ebm_sampling.i_ais_z_dynamics(start, 
                               target.log_prob,
-                              proposal, 
                               method_params['n_steps'], 
                               method_params['grad_step'], 
                               method_params['eps_scale'],
                               method_params['N'], 
-                              method_params['betas'],)
+                              method_params['betas'])
          #history = [history[i][:, -1, :] for i in range(len(history))]
 
-      elif method == 'iterated_ais':
-         history = ebm_sampling.iterated_ais_dynamics(start, 
+      elif method == 'i_ais_v':
+         history = ebm_sampling.i_ais_v_dynamics(start, 
                         target.log_prob,
-                        proposal, 
                         method_params['n_steps'], 
                         method_params['grad_step'], 
                         method_params['eps_scale'],
                         method_params['N'], 
-                        method_params['betas'],)
+                        method_params['betas'],
+                        method_params['rho'])
+                        
+      elif method == 'i_ais_b':
+         history = ebm_sampling.i_ais_b_dynamics(start, 
+                        target.log_prob,
+                        method_params['n_steps'], 
+                        method_params['grad_step'], 
+                        method_params['eps_scale'],
+                        method_params['N'], 
+                        method_params['betas'],
+                        method_params['rho'])
          #history = [history[i][:, -1, :] for i in range(len(history))]
          
       else:
@@ -635,27 +644,35 @@ def run_experiments_2_gaussians(dim_arr,
                         method_params['rhos'], )
          #history = [history[i][:, -1, :] for i in range(len(history))]
 
-      elif method == 'vanilla_ais':
-         history = ebm_sampling.ais_vanilla_dynamics(start, 
+      elif method == 'i_ais_z':
+         history = ebm_sampling.i_ais_z_dynamics(start, 
                               target.log_prob,
-                              proposal, 
                               method_params['n_steps'], 
                               method_params['grad_step'], 
                               method_params['eps_scale'],
                               method_params['N'], 
-                              method_params['betas'],)
+                              method_params['betas'])
          #history = [history[i][:, -1, :] for i in range(len(history))]
 
-      elif method == 'iterated_ais':
-         history = ebm_sampling.iterated_ais_dynamics(start, 
-                              target.log_prob,
-                              proposal, 
-                              method_params['n_steps'], 
-                              method_params['grad_step'], 
-                              method_params['eps_scale'],
-                              method_params['N'], 
-                              method_params['betas'],)
-         #history = [history[i][:, -1, :] for i in range(len(history))]
+      elif method == 'i_ais_v':
+         history = ebm_sampling.i_ais_v_dynamics(start, 
+                        target.log_prob,
+                        method_params['n_steps'], 
+                        method_params['grad_step'], 
+                        method_params['eps_scale'],
+                        method_params['N'], 
+                        method_params['betas'],
+                        method_params['rho'])
+                        
+      elif method == 'i_ais_b':
+         history = ebm_sampling.i_ais_b_dynamics(start, 
+                        target.log_prob,
+                        method_params['n_steps'], 
+                        method_params['grad_step'], 
+                        method_params['eps_scale'],
+                        method_params['N'], 
+                        method_params['betas'],
+                        method_params['rho'])
 
       else:
          raise ValueError('Unknown sampling method')    
