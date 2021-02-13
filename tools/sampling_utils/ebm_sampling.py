@@ -457,7 +457,8 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         z = z.data
         z.requires_grad_(True)
 
-        z_sp.append(z.detach().clone())
+        z_backward_append = z_backward[np.arange(batch_size), indices, :]
+        z_sp.append(z_backward_append.detach().clone())
 
         #E = E[np.arange(batch_size), indices].data
 
@@ -533,7 +534,7 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         z = z.data
         z.requires_grad_(True)
 
-        #z_sp.append(z.detach().clone())
+        z_sp.append(z.detach().clone())
 
         E = E[np.arange(batch_size), indices].data
 
@@ -552,7 +553,7 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         
         z = z_backward.data   
         z.requires_grad_(True)
-        z_sp.append(z.detach().clone())
+        #z_sp.append(z.detach().clone())
 
     return z_sp
     
