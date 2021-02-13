@@ -489,6 +489,17 @@ def run_experiments_gaussians(dim_arr,
                               method_params['N'], 
                               method_params['betas'],)
          #history = [history[i][:, -1, :] for i in range(len(history))]
+
+      elif method == 'iterated_ais':
+         history = ebm_sampling.iterated_ais_dynamics(start, 
+                        target.log_prob,
+                        proposal, 
+                        method_params['n_steps'], 
+                        method_params['grad_step'], 
+                        method_params['eps_scale'],
+                        method_params['N'], 
+                        method_params['betas'],)
+         #history = [history[i][:, -1, :] for i in range(len(history))]
          
       else:
          raise ValueError('Unknown sampling method')    
@@ -626,6 +637,17 @@ def run_experiments_2_gaussians(dim_arr,
 
       elif method == 'vanilla_ais':
          history = ebm_sampling.ais_vanilla_dynamics(start, 
+                              target.log_prob,
+                              proposal, 
+                              method_params['n_steps'], 
+                              method_params['grad_step'], 
+                              method_params['eps_scale'],
+                              method_params['N'], 
+                              method_params['betas'],)
+         #history = [history[i][:, -1, :] for i in range(len(history))]
+
+      elif method == 'iterated_ais':
+         history = ebm_sampling.iterated_ais_dynamics(start, 
                               target.log_prob,
                               proposal, 
                               method_params['n_steps'], 
