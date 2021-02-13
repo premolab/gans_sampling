@@ -321,7 +321,7 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
 tempered_transitions_sampling = sampling_from_dynamics(tempered_transitions_dynamics)
 
 
-def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas):
+def i_ais_z_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
@@ -331,6 +331,9 @@ def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, 
 
     betas = np.array(betas)
     betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]) #n-1
+    
+    scale_proposal = 1.0
+    proposal = init_independent_normal(scale_proposal, z_dim, device)
 
     E, grad = grad_energy(z, target, x=None)
     for _ in range(n_steps):
@@ -387,11 +390,7 @@ def ais_vanilla_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, 
 
     return z_sp
 
-
-ais_vanilla_sampling = sampling_from_dynamics(ais_vanilla_dynamics)
-
-
-def iterated_ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas):
+def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
@@ -401,12 +400,15 @@ def iterated_ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
 
     betas = np.array(betas)
     betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]) #n-1
+    
+    scale_proposal = 1.0
+    proposal = init_independent_normal(scale_proposal, z_dim, device)
 
     #E, grad = grad_energy(z, target, x=None)
     for _ in range(n_steps):
         z = z.unsqueeze(1).repeat(1, N, 1)
 
-        z = z + eps_scale * proposal.sample([batch_size, N])
+        z = rho*z + ((1 - rho**2)**0.5) * proposal.sample([batch_size, N])
         
         z_batch = torch.transpose(z, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
         z_batch.requires_grad_(True)
@@ -455,19 +457,105 @@ def iterated_ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
         z = z.data
         z.requires_grad_(True)
 
-        z_sp.append(z_backward[np.arange(batch_size), indices, :].detach().clone())
+        z_sp.append(z.detach().clone())
+
+        #E = E[np.arange(batch_size), indices].data
+
+        #grad = grad[np.arange(batch_size), indices, :].data
+        #grad.requires_grad_(True)
+
+    return z_sp
+
+def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
+    z_sp = [z.clone().detach()]
+    batch_size, z_dim = z.shape[0], z.shape[1]
+    device = z.device
+
+    mh_transition = MH_Transition(z_dim, device)
+    acceptence = torch.zeros(batch_size).to(device)
+
+    betas = np.array(betas)
+    betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]) #n-1
+    
+    scale_proposal = 1.0
+    proposal = init_independent_normal(scale_proposal, z_dim, device)
+
+    #E, grad = grad_energy(z, target, x=None)
+    for _ in range(n_steps):
+        z = z.unsqueeze(1).repeat(1, N, 1)
+
+        z = rho*z + ((1 - rho**2)**0.5) * proposal.sample([batch_size, N])
+        
+        z_batch = torch.transpose(z, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
+        z_batch.requires_grad_(True)
+
+        # E = E.unsqueeze(1).repeat(1, N)
+        # grad = grad.unsqueeze(1).repeat(1, N, 1)
+        # grad = torch.transpose(grad, 0, 1).reshape((batch_size*N, z_dim)).data #detach().clone()
+
+        E, grad = grad_energy(z_batch, target)
+        E = E.reshape(N, batch_size).T
+
+        z_backward = z_batch
+        z_backward.requires_grad_(True)
+        energy_backward = torch.zeros(batch_size, N, len(betas)-1) # n-1
+        energy_backward[..., len(betas)-2] = E #.detach().clone()
+        
+        E = E.T.reshape(-1)
+        for i, beta in enumerate(betas[::-1][1:-1]):  #betas[0] = 1, betas[n-1] = 0, betas[::-1][1:-1] - increasing, lenghts is n-2
+            j = len(betas) - i - 3
+            eps = eps_scale * proposal.sample([batch_size*N])
+
+            z_backward_new = z_backward - beta * grad_step * grad + eps
+            z_backward, E, grad = mh_transition.do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, target, beta=beta)
+            
+            E_ = E.reshape(z.shape[:-1][::-1]).T
+            energy_backward[..., j] = E_.detach().clone()
+
+        z_backward = torch.transpose(z_backward.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
+        grad = torch.transpose(grad.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
+        E = E.reshape(z.shape[:-1][::-1]).T
+
+        F_backward = (betas_diff[None, None, :] * energy_backward).sum(-1)
+        log_weights = -F_backward
+
+        max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
+        log_weights = log_weights - max_logs
+        sum_weights = torch.logsumexp(log_weights, dim = 1)
+        log_weights = log_weights- sum_weights[:, None]
+        weights = log_weights.exp()
+        weights[weights != weights] = 0.
+        weights[weights.sum(1) == 0.] = 1.
+
+        indices = torch.multinomial(weights, 1).squeeze().tolist()
+
+        z = z_backward[np.arange(batch_size), indices, :]
+        z = z.data
+        z.requires_grad_(True)
+
+        #z_sp.append(z.detach().clone())
 
         E = E[np.arange(batch_size), indices].data
 
         grad = grad[np.arange(batch_size), indices, :].data
         grad.requires_grad_(True)
+        
+        z_backward = z.detach().clone()
+        z_backward.requires_grad_(True)
+        
+        
+        for i, beta in enumerate(betas[:-1]):  #betas[0] = 1, betas[n-1] = 0, betas[::-1][1:-1] - increasing, lenghts is n-2
+            eps = eps_scale * proposal.sample([batch_size])
+
+            z_backward_new = z_backward - beta * grad_step * grad + eps
+            z_backward, E, grad = mh_transition.do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, target, beta=beta)
+        
+        z = z_backward.data   
+        z.requires_grad_(True)
+        z_sp.append(z.detach().clone())
 
     return z_sp
-
-
-iterated_ais_sampling = sampling_from_dynamics(iterated_ais_dynamics)
-
-
+    
 def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos):
     z_sp = [z[:, -1, :].clone().detach()]
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
