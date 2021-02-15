@@ -60,6 +60,3 @@ from biggan_utils import (prepare_parser,
                           initiate_standing_stats,
                           accumulate_standing_stats,
                           Adam16)
-
-
-                         
