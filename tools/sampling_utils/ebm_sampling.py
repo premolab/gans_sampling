@@ -334,25 +334,30 @@ def i_ais_z_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas):
     scale_proposal = 1.0
     proposal = init_independent_normal(scale_proposal, z_dim, device)
 
-    E, grad = grad_energy(z, target, x=None)
-    for _ in tqdm(range(n_steps)):
-        Z = z.unsqueeze(1).repeat(1, N, 1)
-        z_batch = torch.transpose(Z, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
+    E_last, grad_last = grad_energy(z, target, x=None)
+    for step in tqdm(range(n_steps)):
+        if step == 0:
+            N_ = N
+        else:
+            N_ = N - 1
+
+        Z = z.unsqueeze(1).repeat(1, N_, 1)
+        z_batch = torch.transpose(Z, 0, 1).reshape((batch_size*N_, z_dim)).detach().clone()
         z_batch.requires_grad_(True)
 
-        E = E.unsqueeze(1).repeat(1, N)
-        grad = grad.unsqueeze(1).repeat(1, N, 1)
-        grad = torch.transpose(grad, 0, 1).reshape((batch_size*N, z_dim)).data #detach().clone()
+        E = E_last.unsqueeze(1).repeat(1, N_)
+        grad = grad_last.unsqueeze(1).repeat(1, N_, 1)
+        grad = torch.transpose(grad, 0, 1).reshape((batch_size*N_, z_dim)).data #detach().clone()
 
         z_backward = z_batch
         z_backward.requires_grad_(True)
-        energy_backward = torch.zeros(batch_size, N, len(betas)-1) # n-1
+        energy_backward = torch.zeros(batch_size, N_, len(betas)-1) # n-1
         energy_backward[..., len(betas)-2] = E #.detach().clone()
         
         E = E.T.reshape(-1)
         for i, beta in enumerate(betas[::-1][1:-1]):  #betas[0] = 1, betas[n-1] = 0, betas[::-1][1:-1] - increasing, lenghts is n-2
             j = len(betas) - i - 3
-            eps = eps_scale * proposal.sample([batch_size*N])
+            eps = eps_scale * proposal.sample([batch_size*N_])
 
             z_backward_new = z_backward - beta * grad_step * grad + eps
             z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
@@ -370,13 +375,20 @@ def i_ais_z_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas):
 
         z_backward = torch.transpose(z_backward.reshape(list(Z.shape[:-1][::-1]) + [Z.shape[-1]]), 0, 1)
         grad = torch.transpose(grad.reshape(list(Z.shape[:-1][::-1]) + [Z.shape[-1]]), 0, 1)
-        E = E.reshape(Z.shape[:-1][::-1]).T
+        #E = E.reshape(Z.shape[:-1][::-1]).T
+
+        if step > 0:
+            z_backward = torch.cat([z_backward, z.unsqueeze(1)], dim=1)
+            energy_backward = torch.cat([energy_backward, energy_backward_last.unsqueeze(1)], dim=1)
+            grad = torch.cat([grad, grad_last.unsqueeze(1)], dim=1)
+        
+        E = energy_backward[..., 0]
 
         F_backward = (betas_diff[None, None, :] * energy_backward).sum(-1)
         log_weights = -F_backward
 
-        max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
-        log_weights = log_weights - max_logs
+        max_logs = torch.max(log_weights, dim = 1)[0]#.unsqueeze(-1).repeat((1, N))
+        log_weights = log_weights - max_logs[:, None]
         sum_weights = torch.logsumexp(log_weights, dim = 1)
         log_weights = log_weights- sum_weights[:, None]
         weights = log_weights.exp()
@@ -390,10 +402,12 @@ def i_ais_z_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas):
         z.requires_grad_(True)
         z_sp.append(z.detach().clone())
 
-        E = E[np.arange(batch_size), indices].data
+        E_last = E[np.arange(batch_size), indices].data
 
-        grad = grad[np.arange(batch_size), indices, :].data
-        grad.requires_grad_(True)
+        grad_last = grad[np.arange(batch_size), indices, :].data
+        grad_last.requires_grad_(True)
+
+        energy_backward_last = energy_backward[np.arange(batch_size), indices, :]
 
     acceptence_rate = acceptence_rate/(batch_size*N)/len(betas[::-1][1:-1])/n_steps
     return z_sp, acceptence_rate
@@ -412,13 +426,18 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     scale_proposal = 1.0
     proposal = init_independent_normal(scale_proposal, z_dim, device)
 
-    #E, grad = grad_energy(z, target, x=None)
-    for _ in tqdm(range(n_steps)):
-        z = z.unsqueeze(1).repeat(1, N, 1)
+    z_last = z
+    for step in tqdm(range(n_steps)):
+        if step == 0:
+            N_ = N
+        else:
+            N_ = N - 1
 
-        z = rho*z + ((1 - rho**2)**0.5) * proposal.sample([batch_size, N])
+        z = z_last.unsqueeze(1).repeat(1, N_, 1)
+
+        z = rho*z + ((1 - rho**2)**0.5) * proposal.sample([batch_size, N_])
         
-        z_batch = torch.transpose(z, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
+        z_batch = torch.transpose(z, 0, 1).reshape((batch_size*N_, z_dim)).detach().clone()
         z_batch.requires_grad_(True)
 
         # E = E.unsqueeze(1).repeat(1, N)
@@ -426,17 +445,17 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         # grad = torch.transpose(grad, 0, 1).reshape((batch_size*N, z_dim)).data #detach().clone()
 
         E, grad = grad_energy(z_batch, target)
-        E = E.reshape(N, batch_size).T
+        E = E.reshape(N_, batch_size).T
 
         z_backward = z_batch
         z_backward.requires_grad_(True)
-        energy_backward = torch.zeros(batch_size, N, len(betas)-1) # n-1
+        energy_backward = torch.zeros(batch_size, N_, len(betas)-1) # n-1
         energy_backward[..., len(betas)-2] = E #.detach().clone()
         
         E = E.T.reshape(-1)
         for i, beta in enumerate(betas[::-1][1:-1]):  #betas[0] = 1, betas[n-1] = 0, betas[::-1][1:-1] - increasing, lenghts is n-2
             j = len(betas) - i - 3
-            eps = eps_scale * proposal.sample([batch_size*N])
+            eps = eps_scale * proposal.sample([batch_size*N_])
 
             z_backward_new = z_backward - beta * grad_step * grad + eps
             z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
@@ -453,14 +472,22 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
             energy_backward[..., j] = E_.detach().clone()
 
         z_backward = torch.transpose(z_backward.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
-        grad = torch.transpose(grad.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
-        E = E.reshape(z.shape[:-1][::-1]).T
+        #grad = torch.transpose(grad.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
+        #E = E.reshape(z.shape[:-1][::-1]).T
+
+        if step > 0:
+            z = torch.cat([z, z_last.unsqueeze(1)], dim=1)
+            z_backward = torch.cat([z_backward, z_backward_last.unsqueeze(1)], dim=1)
+            energy_backward = torch.cat([energy_backward, energy_backward_last.unsqueeze(1)], dim=1)
+            #grad = torch.cat([grad, grad_last.unsqueeze(1)], dim=1)
+
+        #E = energy_backward[..., 0]
 
         F_backward = (betas_diff[None, None, :] * energy_backward).sum(-1)
         log_weights = -F_backward
 
-        max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
-        log_weights = log_weights - max_logs
+        max_logs = torch.max(log_weights, dim = 1)[0]
+        log_weights = log_weights - max_logs[:, None]
         sum_weights = torch.logsumexp(log_weights, dim = 1)
         log_weights = log_weights- sum_weights[:, None]
         weights = log_weights.exp()
@@ -469,17 +496,18 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
 
         indices = torch.multinomial(weights, 1).squeeze().tolist()
 
-        z = z[np.arange(batch_size), indices, :]
-        z = z.data
-        z.requires_grad_(True)
+        z_last = z[np.arange(batch_size), indices, :]
+        z_last = z_last.data
+        z_last.requires_grad_(True)
 
-        z_backward_append = z_backward[np.arange(batch_size), indices, :]
-        z_sp.append(z_backward_append.detach().clone())
+        z_backward_last = z_backward[np.arange(batch_size), indices, :]
+        z_sp.append(z_backward_last.detach().clone())
 
-        #E = E[np.arange(batch_size), indices].data
+        #grad_last = grad[np.arange(batch_size), indices, :].data
+        #grad_last.requires_grad_(True)
 
-        #grad = grad[np.arange(batch_size), indices, :].data
-        #grad.requires_grad_(True)
+        energy_backward_last = energy_backward[np.arange(batch_size), indices, :]
+
     acceptence_rate = acceptence_rate/(batch_size*N)/len(betas[::-1][1:-1])/n_steps
     return z_sp, acceptence_rate
 
@@ -497,13 +525,19 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     scale_proposal = 1.0
     proposal = init_independent_normal(scale_proposal, z_dim, device)
 
-    #E, grad = grad_energy(z, target, x=None)
-    for _ in tqdm(range(n_steps)):
-        z = z.unsqueeze(1).repeat(1, N, 1)
+    #E_last, grad_last = grad_energy(z, target, x=None)
+    z_last = z
+    for step in tqdm(range(n_steps)):
+        if step == 0:
+            N_ = N
+        else:
+            N_ = N - 1
 
-        z = rho*z + ((1 - rho**2)**0.5) * proposal.sample([batch_size, N])
+        z = z_last.unsqueeze(1).repeat(1, N_, 1)
+
+        z = rho*z + ((1 - rho**2)**0.5) * proposal.sample([batch_size, N_])
         
-        z_batch = torch.transpose(z, 0, 1).reshape((batch_size*N, z_dim)).detach().clone()
+        z_batch = torch.transpose(z, 0, 1).reshape((batch_size*N_, z_dim)).detach().clone()
         z_batch.requires_grad_(True)
 
         # E = E.unsqueeze(1).repeat(1, N)
@@ -511,17 +545,17 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         # grad = torch.transpose(grad, 0, 1).reshape((batch_size*N, z_dim)).data #detach().clone()
 
         E, grad = grad_energy(z_batch, target)
-        E = E.reshape(N, batch_size).T
+        E = E.reshape(N_, batch_size).T
 
         z_backward = z_batch
         z_backward.requires_grad_(True)
-        energy_backward = torch.zeros(batch_size, N, len(betas)-1) # n-1
+        energy_backward = torch.zeros(batch_size, N_, len(betas)-1) # n-1
         energy_backward[..., len(betas)-2] = E #.detach().clone()
         
         E = E.T.reshape(-1)
         for i, beta in enumerate(betas[::-1][1:-1]):  #betas[0] = 1, betas[n-1] = 0, betas[::-1][1:-1] - increasing, lenghts is n-2
             j = len(betas) - i - 3
-            eps = eps_scale * proposal.sample([batch_size*N])
+            eps = eps_scale * proposal.sample([batch_size*N_])
 
             z_backward_new = z_backward - beta * grad_step * grad + eps
             z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
@@ -540,35 +574,46 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
 
         z_backward = torch.transpose(z_backward.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
         grad = torch.transpose(grad.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1)
-        E = E.reshape(z.shape[:-1][::-1]).T
+        #E = E.reshape(z.shape[:-1][::-1]).T
+
+        if step > 0:
+            z = torch.cat([z, z_last.unsqueeze(1)], dim=1)
+            z_backward = torch.cat([z_backward, z_backward_last.unsqueeze(1)], dim=1)
+            energy_backward = torch.cat([energy_backward, energy_backward_last.unsqueeze(1)], dim=1)
+            grad = torch.cat([grad, grad_last.unsqueeze(1)], dim=1)
+        
+        E = energy_backward[..., 0]
 
         F_backward = (betas_diff[None, None, :] * energy_backward).sum(-1)
         log_weights = -F_backward
 
-        max_logs = torch.max(log_weights, dim = 1)[0].unsqueeze(-1).repeat((1, N))
-        log_weights = log_weights - max_logs
+        max_logs = torch.max(log_weights, dim = 1)[0]
+        log_weights = log_weights - max_logs[:, None]
         sum_weights = torch.logsumexp(log_weights, dim = 1)
-        log_weights = log_weights- sum_weights[:, None]
+        log_weights = log_weights - sum_weights[:, None]
         weights = log_weights.exp()
         weights[weights != weights] = 0.
         weights[weights.sum(1) == 0.] = 1.
 
         indices = torch.multinomial(weights, 1).squeeze().tolist()
 
-        z = z_backward[np.arange(batch_size), indices, :]
-        z = z.data
-        z.requires_grad_(True)
+        z_backward = z_backward[np.arange(batch_size), indices, :]
+        z_backward = z_backward.data
+        z_backward.requires_grad_(True)
 
-        z_sp.append(z.detach().clone())
+        z_sp.append(z_backward.detach().clone())
+
+        z_backward_last = z_backward
+        energy_backward_last = energy_backward[np.arange(batch_size), indices, :]
 
         E = E[np.arange(batch_size), indices].data
 
         grad = grad[np.arange(batch_size), indices, :].data
         grad.requires_grad_(True)
+        grad_last = grad
         
-        z_backward = z.detach().clone()
+        z_backward = z_backward.detach().clone()
         z_backward.requires_grad_(True)
-        
         
         for i, beta in enumerate(betas[:-1]):  
             eps = eps_scale * proposal.sample([batch_size])
@@ -585,6 +630,7 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         
         z = z_backward.data   
         z.requires_grad_(True)
+        z_last = z
         #z_sp.append(z.detach().clone())
     acceptence_rate = acceptence_rate/(batch_size*N)/len(betas[::-1][1:-1])/n_steps
     return z_sp, acceptence_rate
