@@ -200,7 +200,7 @@ def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N
     return y_arr   
 
 
-class MH_Transition(object):
+class MALATransition(object):
     def __init__(self, z_dim, device):
         self.device = device
         self.z_dim = z_dim
@@ -214,16 +214,16 @@ class MH_Transition(object):
         dist_args.scale = scale
         self.stand_normal = IndependentNormal(dist_args)
 
-
-    def get_mh_kernel_log_prob(self, log_pi1, log_pi2, log_transition_forward, log_transition_backward):
+    @staticmethod
+    def get_mh_kernel_log_prob(log_pi1, log_pi2, log_transition_forward, log_transition_backward):
         return (log_pi2 + log_transition_backward) - (log_pi1 + log_transition_forward)
 
-
-    def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma):
+    def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma=None):
+        if sigma is None:
+            sigma = (2 * grad_step) ** .5
         loc = z2 - (z1 - grad_step * grad)
         log_prob = self.stand_normal.log_prob(loc/sigma)
         return log_prob
-
 
     def compute_log_probs(self, z, z_new, energy, grad, grad_step, sigma, target=None, beta=1.0):
         energy_new, grad_new = grad_energy(z_new, target, x=None)
@@ -231,7 +231,6 @@ class MH_Transition(object):
         log_transition_backward = self.get_langevin_transition_kernel(z_new, z, grad_new, beta * grad_step, sigma)
         log_prob = self.get_mh_kernel_log_prob(-beta * energy, -beta * energy_new, log_transition_forward, log_transition_backward)
         return log_prob, energy_new, grad_new
-
 
     def do_transition_step(self, z, z_new, energy, grad, grad_step, sigma, target=None, beta=1.0):
         acc_log_prob, energy_new, grad_new = self.compute_log_probs(z, z_new, energy, grad, grad_step, sigma, target, beta)
@@ -254,12 +253,21 @@ class MH_Transition(object):
         return z, energy, grad, mask
 
 
+class CiterMALATransition(MALATransition):
+    def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma=None):
+        if sigma is None:
+            sigma = (2 * grad_step) ** .5
+        loc = z2 - ((1 - grad_step) * z1 - grad_step * grad)
+        log_prob = self.stand_normal.log_prob(loc/sigma)
+        return log_prob
+
+
 def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, betas):
     z_sp = [z.clone().detach()]
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
 
-    mh_transition = MH_Transition(z_dim, device)
+    mala_transition = MALATransition(z_dim, device)
 
     acceptence = torch.zeros(batch_size).to(device)
 
@@ -279,7 +287,7 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
             eps = eps_scale * proposal.sample([batch_size])
 
             z_forward_new = z_forward - grad_step * beta * grad + eps
-            z_forward, E, grad = mh_transition.do_transition_step(z_forward, z_forward_new, E, grad, grad_step, eps_scale, target, beta=beta)
+            z_forward, E, grad = mala_transition.do_transition_step(z_forward, z_forward_new, E, grad, grad_step, eps_scale, target, beta=beta)
             energy_forward[:, i+1] = E
 
         z_backward = z_forward.clone().detach()
@@ -290,7 +298,7 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
             eps = eps_scale * proposal.sample([batch_size])
 
             z_backward_new = z_backward - grad_step * beta * grad + eps
-            z_backward, E, grad = mh_transition.do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, target, beta=beta)
+            z_backward, E, grad = mala_transition.do_transition_step(z_backward, z_backward_new, E, grad, grad_step, eps_scale, target, beta=beta)
             j = len(betas) - i - 3
             energy_backward[:, j] = E
 
@@ -298,7 +306,7 @@ def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_s
         F_backward = (betas_diff * energy_backward).sum(-1)
         log_accept_prob = F_forward - F_backward
         
-        generate_uniform_var = mh_transition.uniform.sample([batch_size]).to(z.device)
+        generate_uniform_var = mala_transition.uniform.sample([batch_size]).to(z.device)
         log_generate_uniform_var = torch.log(generate_uniform_var)
         mask = log_generate_uniform_var < log_accept_prob
         
@@ -325,7 +333,7 @@ def i_ais_z_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas):
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
 
-    mh_transition = MH_Transition(z_dim, device)
+    mala_transition = MALATransition(z_dim, device)
     acceptence_rate = 0.0
 
     betas = np.array(betas)
@@ -360,7 +368,7 @@ def i_ais_z_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas):
             eps = eps_scale * proposal.sample([batch_size*N_])
 
             z_backward_new = z_backward - beta * grad_step * grad + eps
-            z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
+            z_backward, E, grad, mask = mala_transition.do_transition_step(z_backward, 
                                                                          z_backward_new, 
                                                                          E, 
                                                                          grad, 
@@ -417,7 +425,8 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
 
-    mh_transition = MH_Transition(z_dim, device)
+    #mala_transition = CiterMALATransition(z_dim, device)
+    mala_transition = MALATransition(z_dim, device)
     acceptence_rate = 0.0
 
     betas = np.array(betas)
@@ -457,8 +466,9 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
             j = len(betas) - i - 3
             eps = eps_scale * proposal.sample([batch_size*N_])
 
+            #z_backward_new = (1. - grad_step) * z_backward - beta * grad_step * grad + eps
             z_backward_new = z_backward - beta * grad_step * grad + eps
-            z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
+            z_backward, E, grad, mask = mala_transition.do_transition_step(z_backward, 
                                                                          z_backward_new, 
                                                                          E, 
                                                                          grad, 
@@ -508,7 +518,7 @@ def i_ais_v_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
 
         energy_backward_last = energy_backward[np.arange(batch_size), indices, :]
 
-    acceptence_rate = acceptence_rate/(batch_size*N)/len(betas[::-1][1:-1])/n_steps
+    acceptence_rate = 1. #acceptence_rate/(batch_size*N)/len(betas[::-1][1:-1])/n_steps
     return z_sp, acceptence_rate
 
 def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
@@ -516,7 +526,7 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     batch_size, z_dim = z.shape[0], z.shape[1]
     device = z.device
 
-    mh_transition = MH_Transition(z_dim, device)
+    mala_transition = CiterMALATransition(z_dim, device)
     acceptence_rate = 0.0
 
     betas = np.array(betas)
@@ -557,8 +567,8 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
             j = len(betas) - i - 3
             eps = eps_scale * proposal.sample([batch_size*N_])
 
-            z_backward_new = z_backward - beta * grad_step * grad + eps
-            z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
+            z_backward_new = (1 - grad_step) * z_backward - beta * grad_step * grad + eps
+            z_backward, E, grad, mask = mala_transition.do_transition_step(z_backward, 
                                                                          z_backward_new, 
                                                                          E, 
                                                                          grad, 
@@ -618,8 +628,8 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         for i, beta in enumerate(betas[:-1]):  
             eps = eps_scale * proposal.sample([batch_size])
 
-            z_backward_new = z_backward - beta * grad_step * grad + eps
-            z_backward, E, grad, mask = mh_transition.do_transition_step(z_backward, 
+            z_backward_new = (1 - grad_step) * z_backward - beta * grad_step * grad + eps
+            z_backward, E, grad, mask = mala_transition.do_transition_step(z_backward, 
                                                                          z_backward_new, 
                                                                          E, 
                                                                          grad, 
@@ -635,14 +645,15 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     acceptence_rate = acceptence_rate/(batch_size*N)/len(betas[::-1][1:-1])/n_steps
     return z_sp, acceptence_rate
     
-def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos):
+
+def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rhos):
     z_sp = [z[:, -1, :].clone().detach()]
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1  #??
     # T = len(betas) - 2
     device = z.device
 
-    mh_transition = MH_Transition(z_dim, device)
+    mala_transition = CiterMALATransition(z_dim, device)
 
     betas = np.array(betas)
     betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]).to(device) #n-1
@@ -665,7 +676,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
 
         #step 1
         kappa = torch.zeros((batch_size, T + 1, z_dim), dtype = z.dtype).to(device)
-        kappa_t_noise = proposal.sample([batch_size, T + 1])
+        kappa_t_noise = mala_transition.stand_normal.sample([batch_size, T + 1])
         kappa[:, 0, :] = rhos[-1]*z[:, 0, :] + ((1 - rhos[-1]**2)**0.5) * kappa_t_noise[:, 0, :]
         
         for t in range(1, T + 1):
@@ -687,7 +698,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                 E_t_1_not_equal = E[not_equal_mask, t - 1]
                 grad_t_1_not_equal = grad[not_equal_mask, t - 1, :]
                 
-                log_probs, _, _ = mh_transition.compute_log_probs(z_t_1_not_equal, 
+                log_probs, _, _ = mala_transition.compute_log_probs(z_t_1_not_equal, 
                                                                   z_t_not_equal, 
                                                                   E_t_1_not_equal, 
                                                                   grad_t_1_not_equal, 
@@ -697,12 +708,12 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                                                                   beta=beta)
                 
 
-                # v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step)*z_t_1_not_equal \
-                #                                             + grad_step*betas[t]*grad_point1)/eps_scale
-                v[not_equal_mask, t, 0, :] = (z_t_not_equal - z_t_1_not_equal + grad_step * beta * grad_t_1_not_equal)/eps_scale
+                v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step) * z_t_1_not_equal \
+                                                            + grad_step * beta * grad_t_1_not_equal)/ (2 * grad_step)**.5 #eps_scale
+                # v[not_equal_mask, t, 0, :] = (z_t_not_equal - z_t_1_not_equal + grad_step * beta * grad_t_1_not_equal)/eps_scale
 
                 probs = compute_probs_from_log_probs(log_probs)
-                generate_uniform_var = mh_transition.uniform.sample([probs.shape[0]]).to(probs.device)
+                generate_uniform_var = mala_transition.uniform.sample([probs.shape[0]]).to(probs.device)
                 weight_uniform_var = generate_uniform_var * probs
 
                 u[not_equal_mask, t, 0] = weight_uniform_var.float()
@@ -716,8 +727,8 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                 E_t_1_equal = E[equal_mask, t - 1].detach().clone()
                 grad_t_1_equal = grad[equal_mask, t - 1, :].detach().clone()
                 
-                #second_part_no_noise = (1. - grad_step)*z_t_1_equal - grad_step*betas[t]*grad_t_1_equal
-                second_part_no_noise = z_t_1_equal - grad_step * beta * grad_t_1_equal
+                second_part_no_noise = (1. - grad_step) * z_t_1_equal - grad_step * beta * grad_t_1_equal
+                #second_part_no_noise = z_t_1_equal - grad_step * beta * grad_t_1_equal
 
                 stop = False
                 num_updates = 0
@@ -726,13 +737,13 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
                 z_t_1_equal.requires_grad_(True)
 
                 while not stop:
-                    cur_u = mh_transition.uniform.sample([num_equal]).to(z_t_equal.device)
-                    cur_v = proposal.sample([num_equal]).to(z_t_equal.device)
-                    second_part = second_part_no_noise + cur_v*eps_scale
+                    cur_u = mala_transition.uniform.sample([num_equal]).to(z_t_equal.device)
+                    cur_v = mala_transition.stand_normal.sample([num_equal]).to(z_t_equal.device)
+                    second_part = second_part_no_noise + cur_v * eps_scale
                     second_part = second_part.detach().clone()
                     second_part.requires_grad_(True)
                     
-                    log_probs, _, _ = mh_transition.compute_log_probs(z_t_1_equal, 
+                    log_probs, _, _ = mala_transition.compute_log_probs(z_t_1_equal, 
                                                                       second_part, 
                                                                       E_t_1_equal, 
                                                                       grad_t_1_equal, 
@@ -756,12 +767,12 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
             kappa[:, t, :] = rho*v[:, t, 0, :] + ((1 - rho**2)**0.5) * kappa_t_noise[:, t, :]
 
         #step 2
-        W = proposal.sample([batch_size, N - 1])
+        W = mala_transition.stand_normal.sample([batch_size, N - 1])
         #Z - tensor (bs, T + 1, N, dim)
         Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
         
         kappa_repeat = kappa[:, 0, :].unsqueeze(1).repeat(1, N - 1, 1)
-        kappa_N_noise = proposal.sample([batch_size, N - 1])
+        kappa_N_noise = mala_transition.stand_normal.sample([batch_size, N - 1])
         kappa_repeat_N = kappa.unsqueeze(2).repeat(1, 1, N - 1, 1)
 
         Z[:, :, 0, :] = z
@@ -781,7 +792,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
         grads[:, :, 0, :] = grad.detach().clone()
         grads[:, 0, 1:, :] = kappa_grad
         
-        W_2 = proposal.sample([batch_size, T, N - 1])
+        W_2 = mala_transition.stand_normal.sample([batch_size, T, N - 1])
         
         for t in range(1, T + 1):
             beta = betas[::-1][t]
@@ -801,9 +812,9 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
 
             Z_t_1_j = Z[:, t - 1, 1:, :]
             Z_t_1_j_shape = Z_t_1_j.shape
-            # p_t_j = (1. - grad_step)*Z_t_1_j - grad_step*betas[t]*grad_z_t_1_j \
-            #                                         + eps_scale*v[:, t, 1:, :]
-            p_t_j = Z_t_1_j - grad_step*beta*grad_z_t_1_j  + eps_scale*v[:, t, 1:, :]
+            p_t_j = (1. - grad_step) * Z_t_1_j - grad_step * beta * grad_z_t_1_j \
+                                                    + eps_scale * v[:, t, 1:, :]
+            # p_t_j = Z_t_1_j - grad_step*beta*grad_z_t_1_j  + eps_scale*v[:, t, 1:, :]
             
             p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             p_t_j_flatten.requires_grad_(True)
@@ -811,11 +822,7 @@ def ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, r
             Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             Z_t_1_j_flatten.requires_grad_(True)
             
-            #print(Z_t_1_j_flatten.device)
-            #print(p_t_j_flatten.device)
-            #print(E_z_t_1_j_flatten.device)
-            #print(grad_z_t_1_j_flatten.device)
-            z_t, E_t, grad_t, mask = mh_transition.do_transition_step(Z_t_1_j_flatten, 
+            z_t, E_t, grad_t, mask = mala_transition.do_transition_step(Z_t_1_j_flatten, 
                                                                       p_t_j_flatten, 
                                                                       E_z_t_1_j_flatten, 
                                                                       grad_z_t_1_j_flatten, 
@@ -856,7 +863,137 @@ def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size,
     for i in tqdm(range(0, n, batch_size)):
         z = proposal.sample([batch_size, len(betas)])
         z.requires_grad_(True)
-        z_sp = ais_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
+        z_sp, _ = citerais_mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
+        last = z_sp[-1].data.cpu().numpy()
+        z_last.append(last)
+        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
+
+    z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
+    zs = np.stack(zs, axis=0)
+    return z_last_np, zs
+
+
+def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rhos):
+    z_sp = [z[:, -1, :].clone().detach()]
+    batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
+    T = T - 1  #??
+    # T = len(betas) - 2
+    device = z.device
+    mala_transition = CiterMALATransition(z_dim, device)
+
+    betas = np.array(betas)
+    betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]).to(device) #n-1
+
+    z_flat = torch.transpose(z, 0, 1).reshape((batch_size*z.shape[1], z_dim)).detach().clone()
+    z_flat.requires_grad_(True)
+    E_flat, grad_flat = grad_energy(z_flat, target, None)
+    grad = torch.transpose(grad_flat.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1).detach().clone()
+    E = E_flat.reshape(z.shape[:-1][::-1]).T.data
+
+    for _ in trange(n_steps):
+        v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
+        #step 1
+        kappa = torch.zeros((batch_size, T + 1, z_dim), dtype = z.dtype).to(device)
+        kappa_t_noise = mala_transition.stand_normal.sample([batch_size, T + 1])
+        kappa[:, 0, :] = rhos[-1]*z[:, 0, :] + ((1 - rhos[-1]**2)**0.5) * kappa_t_noise[:, 0, :]
+
+        for t in range(1, T + 1):
+            beta = betas[::-1][t]
+            rho = rhos[::-1][t]
+            v[:, t, 0, :] = (z[:, t, :] - (1. - grad_step) * z[:, t - 1, :] \
+                                                            + grad_step * beta * grad[:, t - 1, :]) / (2 * grad_step)**.5
+            kappa[:, t, :] = rho*v[:, t, 0, :] + ((1 - rho**2)**0.5) * kappa_t_noise[:, t, :]
+
+        #step 2
+        #Z - tensor (bs, T + 1, N, dim)
+        kappa_repeat = kappa[:, 0, :].unsqueeze(1).repeat(1, N - 1, 1)
+        kappa_N_noise =  mala_transition.stand_normal.sample([batch_size, N - 1])
+        kappa_repeat_N = kappa.unsqueeze(2).repeat(1, 1, N - 1, 1)
+
+        Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
+        Z[:, :, 0, :] = z
+        Z[:, 0, 1:, :] = rhos[-1]*kappa_repeat + ((1 - rhos[-1]**2)**0.5) * kappa_N_noise
+
+        kappa_flat = torch.transpose(Z[:, 0, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
+        kappa_E_flat, kappa_grad_flat = grad_energy(kappa_flat, target)
+        kappa_E = kappa_E_flat.reshape(N-1, batch_size).T
+        kappa_grad = torch.transpose(kappa_grad_flat.reshape(N-1, batch_size, z_dim), 0, 1)
+        
+        energy = torch.zeros(batch_size, T+1, N).to(device)
+        energy[:, :, 0] = E.data
+        energy[:, 0, 1:] = kappa_E
+
+        grads = torch.zeros(batch_size, T+1, N, z_dim).to(device)
+        grads[:, :, 0, :] = grad.detach().clone()
+        grads[:, 0, 1:, :] = kappa_grad
+        
+        W_2 = mala_transition.stand_normal.sample([batch_size, T, N - 1])
+        
+        for t in range(1, T + 1):
+            beta = betas[::-1][t]
+            rho = rhos[::-1][t]
+
+            v[:, t, 1:, :] = rho*kappa_repeat_N[:, t - 1, :, :] + ((1 - rho**2)**0.5) * W_2[:, t - 1, :, :]
+            #z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
+            #z_t_1_j_flatten.requires_grad_(True)
+            
+            grad_z_t_1_j = grads[:, t - 1, 1:, :]
+            grad_z_t_1_j_flatten = torch.transpose(grad_z_t_1_j, 0, 1).reshape((batch_size*(N - 1), z_dim)).detach().clone().to(device)
+            E_z_t_1_j = energy[:, t - 1, 1:]
+            E_z_t_1_j_flatten = E_z_t_1_j.T.reshape(batch_size*(N - 1))
+
+            Z_t_1_j = Z[:, t - 1, 1:, :]
+            p_t_j = (1. - grad_step) * Z_t_1_j - grad_step * beta * grad_z_t_1_j \
+                                                    + eps_scale * v[:, t, 1:, :]
+            
+            p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
+            p_t_j_flatten.requires_grad_(True)
+            
+            Z_t_1_j_flatten = torch.transpose(Z_t_1_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
+            Z_t_1_j_flatten.requires_grad_(True)
+
+            _, E_t, grad_t = mala_transition.compute_log_probs(Z_t_1_j_flatten, 
+                                                                      p_t_j_flatten, 
+                                                                      E_z_t_1_j_flatten, 
+                                                                      grad_z_t_1_j_flatten, 
+                                                                      grad_step, 
+                                                                      eps_scale, 
+                                                                      target, 
+                                                                      beta)
+            z_t = p_t_j_flatten                                              
+            z_t = torch.transpose(z_t.reshape(N - 1, batch_size, z_dim), 0, 1)
+            E_t = E_t.reshape(N - 1, batch_size).T
+            grad_t = torch.transpose(grad_t.reshape(N - 1, batch_size, z_dim), 0, 1)
+            Z[:, t, 1:, :] = z_t
+            energy[:, t, 1:] = E_t.detach().clone()
+            grads[:, t, 1:, :] = grad_t.detach().clone()
+            
+        log_weights = -(betas_diff[None, :, None] * energy[:, 1:, :]).sum(1)
+            
+        max_logs = torch.max(log_weights, dim = 1)[0]
+        log_weights = log_weights - max_logs[:, None]
+        weights = torch.exp(log_weights)
+        sum_weights = torch.sum(weights, dim = 1)
+        weights = weights/sum_weights[:, None]
+        weights[weights != weights] = 0.
+        weights[weights.sum(1) == 0.] = 1.
+        
+        indices = torch.multinomial(weights, 1).squeeze().tolist()
+        #print(indices)
+        z = Z[np.arange(batch_size), :, indices, :]
+        E = energy[np.arange(batch_size), :, indices]
+        grad = grads[np.arange(batch_size), :, indices, :]
+        z_sp.append(z[:, -1, :].detach().clone())
+
+    return z_sp, 1.0
+
+def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos):
+    z_last = []
+    zs = []
+    for i in tqdm(range(0, n, batch_size)):
+        z = proposal.sample([batch_size, len(betas)])
+        z.requires_grad_(True)
+        z_sp, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
         last = z_sp[-1].data.cpu().numpy()
         z_last.append(last)
         zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))

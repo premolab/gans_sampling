@@ -17,10 +17,11 @@ from torch.distributions import (MultivariateNormal,
 
 from general_utils import DotDict
 from metrics import Evolution
-from ebm_sampling import (i_ais_z_dynamics,
-                          i_ais_v_dynamics,
-                          i_ais_b_dynamics,
-                          grad_energy)
+import ebm_sampling
+# from ebm_sampling import (i_ais_z_dynamics,
+#                           i_ais_v_dynamics,
+#                           i_ais_b_dynamics,
+#                           grad_energy)
 
 def compute_sir_log_weights(x, target, proposal):
     return target.log_prob(x) -  proposal.log_prob(x)
@@ -127,13 +128,13 @@ def run_experiments_gaussians(dim_arr,
       np.random.seed(random_seed)
       random.seed(random_seed)
    
-      if (mode_init == 'target') and (method != 'ais'):
+      if (mode_init == 'target') and not method.startswith('citer'):
          start = target.sample([batch_size])
-      elif mode_init == 'proposal' and (method != 'ais'):
+      elif mode_init == 'proposal' and not method.startswith('citer'):
          start = proposal.sample([batch_size])
-      elif (mode_init == 'target') and (method == 'ais'):
+      elif (mode_init == 'target') and method.startswith('citer'):
          start = target.sample([batch_size, len(method_params['betas'])])
-      elif mode_init == 'proposal' and (method == 'ais'):
+      elif mode_init == 'proposal' and method.startswith('citer'):
          start = proposal.sample([batch_size, len(method_params['betas'])])
       else:
          raise ValueError('Unknown initialization method')
@@ -153,8 +154,19 @@ def run_experiments_gaussians(dim_arr,
                                             method_params['n_steps'], 
                                             method_params['N'])
          acceptence = 1.0
-      elif method == 'ais':
-         history, acceptence = ais_dynamics(start, 
+      elif method == 'citerais_mala':
+         history, acceptence = ebm_sampling.citerais_mala_dynamics(start, 
+                                            target.log_prob,
+                                            proposal, 
+                                            method_params['n_steps'], 
+                                            method_params['grad_step'], 
+                                            method_params['eps_scale'],
+                                            method_params['N'], 
+                                            method_params['betas'], 
+                                            method_params['rhos'])
+
+      elif method == 'citerais_ula':
+         history, acceptence = ebm_sampling.citerais_ula_dynamics(start, 
                                             target.log_prob,
                                             proposal, 
                                             method_params['n_steps'], 
@@ -165,7 +177,7 @@ def run_experiments_gaussians(dim_arr,
                                             method_params['rhos'])
 
       elif method == 'i_ais_z':
-         history, acceptence = i_ais_z_dynamics(start, 
+         history, acceptence = ebm_sampling.i_ais_z_dynamics(start, 
                                                 target.log_prob,
                                                 method_params['n_steps'], 
                                                 method_params['grad_step'], 
@@ -174,7 +186,7 @@ def run_experiments_gaussians(dim_arr,
                                                 method_params['betas'])
 
       elif method == 'i_ais_v':
-         history, acceptence = i_ais_v_dynamics(start, 
+         history, acceptence = ebm_sampling.i_ais_v_dynamics(start, 
                                                 target.log_prob,
                                                 method_params['n_steps'], 
                                                 method_params['grad_step'], 
@@ -184,7 +196,7 @@ def run_experiments_gaussians(dim_arr,
                                                 method_params['rho'])
                         
       elif method == 'i_ais_b':
-         history, acceptence = i_ais_b_dynamics(start, 
+         history, acceptence = ebm_sampling.i_ais_b_dynamics(start, 
                                                 target.log_prob,
                                                 method_params['n_steps'], 
                                                 method_params['grad_step'], 
