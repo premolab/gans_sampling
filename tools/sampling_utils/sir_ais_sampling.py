@@ -166,15 +166,15 @@ def run_experiments_gaussians(dim_arr,
                                             method_params['rhos'])
 
       elif method == 'citerais_ula':
-         history, acceptence = ebm_sampling.citerais_ula_dynamics(start, 
+         history, acceptence, _ = ebm_sampling.citerais_ula_dynamics(start, 
                                             target.log_prob,
-                                            proposal, 
                                             method_params['n_steps'], 
                                             method_params['grad_step'], 
                                             method_params['eps_scale'],
                                             method_params['N'], 
                                             method_params['betas'], 
                                             method_params['rhos'])
+         history = [x[:, -1, :] for x in history]
 
       elif method == 'i_ais_z':
          history, acceptence = ebm_sampling.i_ais_z_dynamics(start, 
@@ -305,9 +305,9 @@ def run_experiments_2_gaussians(dim_arr,
                                                cluster_std = scale_target,
                                                random_state = random_seed)[0]
          start = torch.FloatTensor(dataset).to(device)
-      elif mode_init == 'proposal' and (method != 'ais'):
+      elif mode_init == 'proposal' and not method.startswith('citerais'):
          start = proposal.sample([batch_size])
-      elif mode_init == 'proposal' and (method == 'ais'):
+      elif mode_init == 'proposal' and method.startswith('citerais'):
          start = proposal.sample([batch_size, len(method_params['betas'])])
          start = start.float()
       else:
@@ -328,8 +328,8 @@ def run_experiments_2_gaussians(dim_arr,
                                             method_params['n_steps'], 
                                             method_params['N'])
          acceptence = 1.0
-      elif method == 'ais':
-         history, acceptence = ais_dynamics(start, 
+      elif method == 'citerais_mala':
+         history, acceptence = ebm_sampling.citerais_mala_dynamics(start, 
                                             target.log_prob,
                                             proposal, 
                                             method_params['n_steps'], 
@@ -339,8 +339,19 @@ def run_experiments_2_gaussians(dim_arr,
                                             method_params['betas'], 
                                             method_params['rhos'])
 
+      elif method == 'citerais_ula':
+         history, acceptence, _ = ebm_sampling.citerais_ula_dynamics(start, 
+                                            target.log_prob, 
+                                            method_params['n_steps'], 
+                                            method_params['grad_step'], 
+                                            method_params['eps_scale'],
+                                            method_params['N'], 
+                                            method_params['betas'], 
+                                            method_params['rhos'])
+         history = [x[:, -1, :] for x in history]
+
       elif method == 'i_ais_z':
-         history, acceptence = i_ais_z_dynamics(start, 
+         history, acceptence = ebm_sampling.i_ais_z_dynamics(start, 
                                                 target.log_prob,
                                                 method_params['n_steps'], 
                                                 method_params['grad_step'], 
@@ -349,7 +360,7 @@ def run_experiments_2_gaussians(dim_arr,
                                                 method_params['betas'])
 
       elif method == 'i_ais_v':
-         history, acceptence = i_ais_v_dynamics(start, 
+         history, acceptence = ebm_sampling.i_ais_v_dynamics(start, 
                                                 target.log_prob,
                                                 method_params['n_steps'], 
                                                 method_params['grad_step'], 
@@ -359,7 +370,7 @@ def run_experiments_2_gaussians(dim_arr,
                                                 method_params['rho'])
                         
       elif method == 'i_ais_b':
-         history, acceptence = i_ais_b_dynamics(start, 
+         history, acceptence = ebm_sampling.i_ais_b_dynamics(start, 
                                                 target.log_prob,
                                                 method_params['n_steps'], 
                                                 method_params['grad_step'], 
@@ -415,6 +426,7 @@ def run_experiments_2_gaussians(dim_arr,
             mode_var = Evolution.compute_mode_std(X_gen, assignment).item()**2
                
             modes_mean, found_modes_ind = Evolution.compute_mode_mean(X_gen, assignment)
+            #print(found_modes_ind)
             if 0 in found_modes_ind:
                num_found_1_mode += 1
                means_est_1 += modes_mean[0]
@@ -432,6 +444,7 @@ def run_experiments_2_gaussians(dim_arr,
       else:
          raise ValueError('Unknown method of mean') 
          
+      #print(modes_var_arr)
       jsd_result = np.array(jsd_arr).mean()
       modes_var_result = np.array(modes_var_arr).mean()
       h_q_r_result = np.array(h_q_r_arr).mean()
