@@ -653,7 +653,7 @@ def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, r
     # T = len(betas) - 2
     device = z.device
 
-    mala_transition = CiterMALATransition(z_dim, device)
+    mala_transition = MALATransition(z_dim, device)
 
     betas = np.array(betas)
     betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]).to(device) #n-1
@@ -708,9 +708,9 @@ def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, r
                                                                   beta=beta)
                 
 
-                v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step) * z_t_1_not_equal \
-                                                            + grad_step * beta * grad_t_1_not_equal)/ (2 * grad_step)**.5 #eps_scale
-                # v[not_equal_mask, t, 0, :] = (z_t_not_equal - z_t_1_not_equal + grad_step * beta * grad_t_1_not_equal)/eps_scale
+                #v[not_equal_mask, t, 0, :] = (z_t_not_equal - (1. - grad_step) * z_t_1_not_equal \
+                #                                            + grad_step * beta * grad_t_1_not_equal)/ (2 * grad_step)**.5 #eps_scale
+                v[not_equal_mask, t, 0, :] = (z_t_not_equal - z_t_1_not_equal + grad_step * beta * grad_t_1_not_equal)/eps_scale
 
                 probs = compute_probs_from_log_probs(log_probs)
                 generate_uniform_var = mala_transition.uniform.sample([probs.shape[0]]).to(probs.device)
@@ -812,9 +812,9 @@ def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, r
 
             Z_t_1_j = Z[:, t - 1, 1:, :]
             Z_t_1_j_shape = Z_t_1_j.shape
-            p_t_j = (1. - grad_step) * Z_t_1_j - grad_step * beta * grad_z_t_1_j \
-                                                    + eps_scale * v[:, t, 1:, :]
-            # p_t_j = Z_t_1_j - grad_step*beta*grad_z_t_1_j  + eps_scale*v[:, t, 1:, :]
+            #p_t_j = (1. - grad_step) * Z_t_1_j - grad_step * beta * grad_z_t_1_j \
+            #                                        + eps_scale * v[:, t, 1:, :]
+            p_t_j = Z_t_1_j - grad_step*beta*grad_z_t_1_j  + eps_scale*v[:, t, 1:, :]
             
             p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             p_t_j_flatten.requires_grad_(True)
@@ -874,12 +874,14 @@ def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size,
 
 
 def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rhos):
-    z_sp = [z[:, -1, :].clone().detach()]
+    # z_sp = [z[:, -1, :].clone().detach()]
+    z_sp = [z.clone().detach()]
+    traj_hist = [z[:5].clone().detach()]
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1  #??
     # T = len(betas) - 2
     device = z.device
-    mala_transition = CiterMALATransition(z_dim, device)
+    mala_transition = MALATransition(z_dim, device)
 
     betas = np.array(betas)
     betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]).to(device) #n-1
@@ -900,8 +902,7 @@ def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rh
         for t in range(1, T + 1):
             beta = betas[::-1][t]
             rho = rhos[::-1][t]
-            v[:, t, 0, :] = (z[:, t, :] - (1. - grad_step) * z[:, t - 1, :] \
-                                                            + grad_step * beta * grad[:, t - 1, :]) / (2 * grad_step)**.5
+            v[:, t, 0, :] = (z[:, t, :] - z[:, t - 1, :] + grad_step * beta * grad[:, t - 1, :]) / eps_scale
             kappa[:, t, :] = rho*v[:, t, 0, :] + ((1 - rho**2)**0.5) * kappa_t_noise[:, t, :]
 
         #step 2
@@ -943,8 +944,7 @@ def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rh
             E_z_t_1_j_flatten = E_z_t_1_j.T.reshape(batch_size*(N - 1))
 
             Z_t_1_j = Z[:, t - 1, 1:, :]
-            p_t_j = (1. - grad_step) * Z_t_1_j - grad_step * beta * grad_z_t_1_j \
-                                                    + eps_scale * v[:, t, 1:, :]
+            p_t_j = Z_t_1_j - grad_step * beta * grad_z_t_1_j + eps_scale * v[:, t, 1:, :]
             
             p_t_j_flatten = torch.transpose(p_t_j, 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             p_t_j_flatten.requires_grad_(True)
@@ -967,6 +967,8 @@ def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rh
             Z[:, t, 1:, :] = z_t
             energy[:, t, 1:] = E_t.detach().clone()
             grads[:, t, 1:, :] = grad_t.detach().clone()
+
+        traj_hist.append(Z[:5, ..., 1, :].detach().clone())
             
         log_weights = -(betas_diff[None, :, None] * energy[:, 1:, :]).sum(1)
             
@@ -978,14 +980,16 @@ def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rh
         weights[weights != weights] = 0.
         weights[weights.sum(1) == 0.] = 1.
         
+        #weights[:, 0, ...] = 0.
+
         indices = torch.multinomial(weights, 1).squeeze().tolist()
-        #print(indices)
         z = Z[np.arange(batch_size), :, indices, :]
         E = energy[np.arange(batch_size), :, indices]
         grad = grads[np.arange(batch_size), :, indices, :]
-        z_sp.append(z[:, -1, :].detach().clone())
+        # z_sp.append(z[:, -1, :].detach().clone())
+        z_sp.append(z.detach().clone())
 
-    return z_sp, 1.0
+    return z_sp, 1.0, traj_hist
 
 def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos):
     z_last = []
@@ -993,7 +997,7 @@ def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, ba
     for i in tqdm(range(0, n, batch_size)):
         z = proposal.sample([batch_size, len(betas)])
         z.requires_grad_(True)
-        z_sp, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
+        z_sp, _, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
         last = z_sp[-1].data.cpu().numpy()
         z_last.append(last)
         zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
