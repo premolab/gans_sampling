@@ -21,6 +21,7 @@ from pyro.infer import MCMC, NUTS, HMC
 from functools import partial
 from tqdm import tqdm, trange
 from easydict import EasyDict as edict
+import copy
 
 
 def grad_energy(point, target, x=None):
@@ -254,6 +255,7 @@ class MALATransition(object):
 
 
 class CiterMALATransition(MALATransition):
+    # NOT NEEDED
     def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma=None):
         if sigma is None:
             sigma = (2 * grad_step) ** .5
@@ -567,7 +569,8 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
             j = len(betas) - i - 3
             eps = eps_scale * proposal.sample([batch_size*N_])
 
-            z_backward_new = (1 - grad_step) * z_backward - beta * grad_step * grad + eps
+            #z_backward_new = (1 - grad_step) * z_backward - beta * grad_step * grad + eps
+            z_backward_new = z_backward - beta * grad_step * grad + eps
             z_backward, E, grad, mask = mala_transition.do_transition_step(z_backward, 
                                                                          z_backward_new, 
                                                                          E, 
@@ -628,7 +631,8 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
         for i, beta in enumerate(betas[:-1]):  
             eps = eps_scale * proposal.sample([batch_size])
 
-            z_backward_new = (1 - grad_step) * z_backward - beta * grad_step * grad + eps
+            #z_backward_new = (1 - grad_step) * z_backward - beta * grad_step * grad + eps
+            z_backward_new = z_backward - beta * grad_step * grad + eps
             z_backward, E, grad, mask = mala_transition.do_transition_step(z_backward, 
                                                                          z_backward_new, 
                                                                          E, 
@@ -873,15 +877,39 @@ def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size,
     return z_last_np, zs
 
 
-def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rhos):
-    # z_sp = [z[:, -1, :].clone().detach()]
-    z_sp = [z.clone().detach()]
+def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=True, max_n_rej=10):
+    '''
+    do_ar: bool - include path from the privious step to N current paths
+    max_n_rej: int - maximum number of rejections together, if reached - don't reject this step (aka refreshing)
+    '''
+    #T = len(betas)
+    batch_size, T, z_dim = z.shape
+    device = z.device
+    z = proposal.sample([batch_size])
+    z.requires_grad_(True)
+    E, grad = grad_energy(z, target, None)
+    
+    # step 0: Generate start ULA path
+    start = [z.detach().clone()]
+    mala_transition = MALATransition(z_dim, device)
+    W = mala_transition.stand_normal.sample([batch_size, T])
+            
+    for t in range(1, T):
+        beta = betas[::-1][t]
+        rho = rhos[::-1][t]
+        z = z - grad_step * beta * grad + eps_scale * W[:, t, :]
+        E, grad = grad_energy(z, target, None)
+        start.append(z.detach().clone())
+    
+    z = torch.stack(start, 1)
+    # end of step 0
+
+    z_sp = [z[:, -1, :].clone().detach()]
+    #z_sp = [z.clone().detach()]
     traj_hist = [z[:5].clone().detach()]
-    batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
+    #batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1  #??
     # T = len(betas) - 2
-    device = z.device
-    mala_transition = MALATransition(z_dim, device)
 
     betas = np.array(betas)
     betas_diff = torch.FloatTensor(betas[:-1] - betas[1:]).to(device) #n-1
@@ -892,7 +920,13 @@ def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rh
     grad = torch.transpose(grad_flat.reshape(list(z.shape[:-1][::-1]) + [z.shape[-1]]), 0, 1).detach().clone()
     E = E_flat.reshape(z.shape[:-1][::-1]).T.data
 
-    for _ in trange(n_steps):
+    #rhos_ = copy.deepcopy(rhos)
+    n_rej = torch.zeros(batch_size)
+    for step in trange(n_steps):
+        # if step == 0:
+        #     rhos = [0]*(T+1)
+        # else:
+        #     rhos = rhos_
         v = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
         #step 1
         kappa = torch.zeros((batch_size, T + 1, z_dim), dtype = z.dtype).to(device)
@@ -980,14 +1014,22 @@ def citerais_ula_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rh
         weights[weights != weights] = 0.
         weights[weights.sum(1) == 0.] = 1.
         
-        #weights[:, 0, ...] = 0.
+        if not do_ar:
+            weights[:, 0, ...] = 0.
 
         indices = torch.multinomial(weights, 1).squeeze().tolist()
+        n_rej += (torch.tensor(indices) == 0).float()
+
+        weights[n_rej > max_n_rej, 0, ...] = 0.
+        indices = torch.multinomial(weights, 1).squeeze().tolist()
+        n_rej[n_rej > max_n_rej] = 0
+
+
         z = Z[np.arange(batch_size), :, indices, :]
         E = energy[np.arange(batch_size), :, indices]
         grad = grads[np.arange(batch_size), :, indices, :]
-        # z_sp.append(z[:, -1, :].detach().clone())
-        z_sp.append(z.detach().clone())
+        z_sp.append(z[:, -1, :].detach().clone())
+        # z_sp.append(z.detach().clone())
 
     return z_sp, 1.0, traj_hist
 

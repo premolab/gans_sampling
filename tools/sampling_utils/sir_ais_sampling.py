@@ -168,13 +168,14 @@ def run_experiments_gaussians(dim_arr,
       elif method == 'citerais_ula':
          history, acceptence, _ = ebm_sampling.citerais_ula_dynamics(start, 
                                             target.log_prob,
+                                            proposal,
                                             method_params['n_steps'], 
                                             method_params['grad_step'], 
                                             method_params['eps_scale'],
                                             method_params['N'], 
                                             method_params['betas'], 
                                             method_params['rhos'])
-         history = [x[:, -1, :] for x in history]
+         #history = [x[:, -1, :] for x in history]
 
       elif method == 'i_ais_z':
          history, acceptence = ebm_sampling.i_ais_z_dynamics(start, 
@@ -341,14 +342,15 @@ def run_experiments_2_gaussians(dim_arr,
 
       elif method == 'citerais_ula':
          history, acceptence, _ = ebm_sampling.citerais_ula_dynamics(start, 
-                                            target.log_prob, 
+                                            target.log_prob,
+                                            proposal, 
                                             method_params['n_steps'], 
                                             method_params['grad_step'], 
                                             method_params['eps_scale'],
                                             method_params['N'], 
                                             method_params['betas'], 
                                             method_params['rhos'])
-         history = [x[:, -1, :] for x in history]
+         #history = [x[:, -1, :] for x in history]
 
       elif method == 'i_ais_z':
          history, acceptence = ebm_sampling.i_ais_z_dynamics(start, 
