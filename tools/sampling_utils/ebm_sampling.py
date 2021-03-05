@@ -802,7 +802,7 @@ def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, r
             beta = betas[::-1][t]
             rho = rhos[::-1][t]
 
-            v[:, t, 1:, :] = rho*kappa_repeat_N[:, t - 1, :, :] + ((1 - rho**2)**0.5) * W_2[:, t - 1, :, :]
+            v[:, t, 1:, :] = rho*kappa_repeat_N[:, t, :, :] + ((1 - rho**2)**0.5) * W_2[:, t - 1, :, :]
             z_t_1_j_shape = Z[:, t - 1, 1:, :].shape
             z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             z_t_1_j_flatten.requires_grad_(True)
@@ -877,7 +877,7 @@ def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size,
     return z_last_np, zs
 
 
-def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=True, max_n_rej=10):
+def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5):
     '''
     do_ar: bool - include path from the privious step to N current paths
     max_n_rej: int - maximum number of rejections together, if reached - don't reject this step (aka refreshing)
@@ -947,7 +947,9 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
 
         Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
         Z[:, :, 0, :] = z
-        Z[:, 0, 1:, :] = rhos[-1]*kappa_repeat + ((1 - rhos[-1]**2)**0.5) * kappa_N_noise
+        mask = torch.distributions.bernoulli.Bernoulli(probs=torch.tensor([pbern])).sample(torch.Size([batch_size, N-1])).squeeze(-1)
+
+        Z[:, 0, 1:, :] = rhos[-1]*kappa_repeat*mask[..., None] + ((1 - rhos[-1]**2 * mask[..., None])**0.5) * kappa_N_noise
 
         kappa_flat = torch.transpose(Z[:, 0, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone()
         kappa_E_flat, kappa_grad_flat = grad_energy(kappa_flat, target)
@@ -968,11 +970,14 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
             beta = betas[::-1][t]
             rho = rhos[::-1][t]
 
-            v[:, t, 1:, :] = rho*kappa_repeat_N[:, t - 1, :, :] + ((1 - rho**2)**0.5) * W_2[:, t - 1, :, :]
+            v[:, t, 1:, :] = rho*kappa_repeat_N[:, t, :, :]*mask[..., None] + ((1 - rho**2 * mask[..., None])**0.5) * W_2[:, t-1, :, :]
+            #v[:, t, 1:, :] = rho*kappa_repeat_N[:, t - 1, :, :]*mask[..., None] + ((1 - rho**2 * mask[..., None])**0.5) * W_2[:, t - 1, :, :]
+            
             #z_t_1_j_flatten = torch.transpose(Z[:, t - 1, 1:, :], 0, 1).reshape((batch_size*(N-1), z_dim)).detach().clone().to(device)
             #z_t_1_j_flatten.requires_grad_(True)
             
             grad_z_t_1_j = grads[:, t - 1, 1:, :]
+            
             grad_z_t_1_j_flatten = torch.transpose(grad_z_t_1_j, 0, 1).reshape((batch_size*(N - 1), z_dim)).detach().clone().to(device)
             E_z_t_1_j = energy[:, t - 1, 1:]
             E_z_t_1_j_flatten = E_z_t_1_j.T.reshape(batch_size*(N - 1))
