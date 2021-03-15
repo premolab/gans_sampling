@@ -947,7 +947,7 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
 
         Z = torch.zeros((batch_size, T + 1, N, z_dim), dtype = z.dtype).to(device)
         Z[:, :, 0, :] = z
-        mask = torch.distributions.bernoulli.Bernoulli(probs=torch.tensor([pbern])).sample(torch.Size([batch_size, N-1])).squeeze(-1)
+        mask = torch.distributions.bernoulli.Bernoulli(probs=torch.tensor([pbern])).sample(torch.Size([batch_size, N-1])).squeeze(-1).to(device)
 
         Z[:, 0, 1:, :] = rhos[-1]*kappa_repeat*mask[..., None] + ((1 - rhos[-1]**2 * mask[..., None])**0.5) * kappa_N_noise
 

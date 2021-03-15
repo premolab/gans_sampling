@@ -142,3 +142,11 @@ def init_independent_normal(scale, n_dim, device, loc = 0.0):
     target_args.scale = scale
     target = IndependentNormal(target_args)
     return target
+
+def init_independent_normal_scale(scales, locs, device):
+    target_args = DotDict()
+    target_args.device = device
+    target_args.loc = locs.to(device)
+    target_args.scale = scales.to(device)
+    target = IndependentNormal(target_args)
+    return target
