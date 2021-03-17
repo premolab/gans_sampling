@@ -1038,13 +1038,13 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
 
     return z_sp, 1.0, traj_hist
 
-def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos):
+def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5):
     z_last = []
     zs = []
     for i in tqdm(range(0, n, batch_size)):
         z = proposal.sample([batch_size, len(betas)])
         z.requires_grad_(True)
-        z_sp, _, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
+        z_sp, _, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=do_ar, max_n_rej=max_n_rej, pbern=pbern)
         last = z_sp[-1].data.cpu().numpy()
         z_last.append(last)
         zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
