@@ -34,8 +34,11 @@ def grad_energy(point, target, x=None):
     return energy, grad    
 
 
-def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob=False):
-    generator_points = generator(z)
+def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob=False, z_transform=None):
+    if z_transform is None:
+        generator_points = generator(z)
+    else:
+        generator_points = generator(z_transform(z))
     if normalize_to_0_1:
         gan_part = -discriminator(generator_points).view(-1)
     else:
