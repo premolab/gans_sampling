@@ -73,7 +73,7 @@ class CIFAR100(CIFAR10):
 class GenDataset(torch.utils.data.Dataset):
     """Dataset for Generator
     """
-    def __init__(self, G, nsamples):
+    def __init__(self, G, nsamples, pretrained = False, device = None, z_dim = None):
         self.G = G
         self.nsamples = nsamples
         self.transform=transforms.Compose([
@@ -81,9 +81,41 @@ class GenDataset(torch.utils.data.Dataset):
             transforms.Normalize((0.485, 0.456, 0.406),
                                     (0.229, 0.224, 0.225))
         ])
+        self.pretrained = pretrained
+        self.device = device
+        self.z_dim = z_dim
 
     def __getitem__(self, index):
-        z = to_var(torch.randn(1, self.G.z_dim), self.G.device)
+        if self.pretrained:
+            z = to_var(torch.randn(1, self.z_dim, 1, 1), self.device)
+        else:
+            z = to_var(torch.randn(1, self.G.z_dim), self.G.device)
+        return self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
+
+    def __len__(self):
+        return self.nsamples
+
+    def denorm(self, x):
+        # For fake data generated with tanh(x)
+        x = (x + 1) / 2
+        return x.clamp(0, 1)
+
+class LatentFixDataset(torch.utils.data.Dataset):
+    """Dataset for Generator
+    """
+    def __init__(self, latent_arr, G, device, nsamples):
+        self.latent_arr = latent_arr
+        self.G = G
+        self.nsamples = nsamples
+        self.transform=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406),
+                                    (0.229, 0.224, 0.225))
+        ])
+        self.device = device
+
+    def __getitem__(self, index):
+        z = to_var(self.latent_arr[index], self.device)
         return self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
 
     def __len__(self):
