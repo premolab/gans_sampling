@@ -81,6 +81,20 @@ class Discriminator_cifar10(nn.Module):
             output = self.main(input)
 
         return output.view(-1, 1).squeeze(1)
+
+class Discriminator_cifar10_logits(nn.Module):
+    def __init__(self, discriminator_sigmoid, ngpu, nc=3, ndf=64):
+        super(Discriminator_cifar10_logits, self).__init__()
+        self.ngpu = ngpu
+        self.main = discriminator_sigmoid.main[:-1]
+
+    def forward(self, input):
+        if input.is_cuda and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+        else:
+            output = self.main(input)
+
+        return output.view(-1, 1).squeeze(1)
     
 if __name__ == '__main__':    
 
