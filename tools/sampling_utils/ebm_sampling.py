@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch, torch.nn as nn
 import torch.nn.functional as F
@@ -34,8 +35,12 @@ def grad_energy(point, target, x=None):
     return energy, grad    
 
 
-def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob=False):
-    generator_points = generator(z)
+def gan_energy(z, generator, discriminator, 
+               proposal, normalize_to_0_1, log_prob=False, z_transform=None):
+    if z_transform is None:
+        generator_points = generator(z)
+    else:
+        generator_points = generator(z_transform(z))
     if normalize_to_0_1:
         gan_part = -discriminator(generator_points).view(-1)
     else:
@@ -52,11 +57,22 @@ def gan_energy(z, generator, discriminator, proposal, normalize_to_0_1, log_prob
        return -energy
 
 
-def sampling_f(dynamics, target, proposal, batch_size, n, *args, **kwargs):
+def sampling_f(dynamics, target, proposal, 
+               batch_size, n, path_to_save=None,
+               file_name = None,
+               every_step = None, 
+               continue_z = None,
+               *args, **kwargs):
     z_last = []
     zs = []
+    cur_zs = []
     for i in tqdm(range(0, n, batch_size)):
-        z = proposal.sample([batch_size])
+        z = None 
+        if continue_z is None:
+           z = proposal.sample([batch_size])
+        else:
+           j = i // batch_size
+           z = continue_z[j][-1].clone().detach()
         z.requires_grad_(True)
         out = dynamics(z, target, proposal, *args, **kwargs)
         if isinstance(out, tuple):
@@ -64,19 +80,55 @@ def sampling_f(dynamics, target, proposal, batch_size, n, *args, **kwargs):
         else:
             z_sp = out
         last = z_sp[-1].data.cpu().numpy()
+        zs_append = np.stack([o.data.cpu().numpy() for o in z_sp], axis=0)
         z_last.append(last)
-        zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
+        zs.append(zs_append)
+        if ((file_name is not None) and \
+            (path_to_save is not None) and (every_step is not None)):
+           cur_file_name = file_name + f"_batch_num_{i}.npy"
+           cur_path_to_save = os.path.join(path_to_save, cur_file_name)
+           save_np_file = zs_append[::every_step, :, :]
+           np.save(cur_path_to_save, save_np_file)
+           print(f"file {cur_path_to_save} was saved, file shape = {save_np_file.shape}")
 
     z_last_np = np.asarray(z_last).reshape(-1, z.shape[-1])
     zs = np.stack(zs, axis=0)
     return z_last_np, zs
 
+def load_data_from_batches(n, batch_size, 
+                           path_to_save, path_to_batches):
+    load_np = []
+
+    for i in tqdm(range(0, n, batch_size)):
+       cur_file_name = path_to_batches + f"_batch_num_{i}.npy"
+       cur_path_to_save = os.path.join(path_to_save, cur_file_name)
+       cur_zs = np.load(cur_path_to_save)
+       load_np.append(cur_zs)
+    
+    load_np = np.array(load_np)
+    load_np = np.concatenate(load_np.transpose(0, 2, 1, 3), 
+                             axis = 0).transpose(1, 0, 2)
+    return load_np
 
 def sampling_from_dynamics(dynamics):
-    samling_dynamics_f = lambda target, proposal, batch_size, n, *args, **kwargs: \
-                        sampling_f(dynamics, target, proposal, batch_size, n, *args, **kwargs)
-    return samling_dynamics_f
+    sampling_dynamics_f = lambda target, proposal, \
+                                batch_size, n, \
+                                path_to_save=None, \
+                                file_name=None, \
+                                every_step=None, \
+                                continue_z = None, \
+                                *args, **kwargs: \
+                                sampling_f(dynamics, target, 
+                                           proposal, batch_size, 
+                                           n, path_to_save, 
+                                           file_name, every_step,
+                                           continue_z, 
+                                           *args, **kwargs)
+    return sampling_dynamics_f
 
+def aggregate_sampling_output(z):
+    return np.concatenate(z.transpose(0, 2, 1, 3), 
+                          axis = 0).transpose(1, 0, 2)
 
 def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
     z_sp = []
