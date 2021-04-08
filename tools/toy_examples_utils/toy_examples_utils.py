@@ -31,8 +31,34 @@ def prepare_swissroll_data(batch_size=1000):
     data /= 7.5 # stdev plus a little
     return data
 
+def prepare_2d_ring_data(batch_size=500,
+                        sigma=0.01,
+                        rad=2,
+                        random_seed=42):
+    dataset = []
+    rad = 2
+    for i in range(batch_size//8):
+        for j in range(8):
+            phi = 2 * np.pi * (j / 8.)
+            x = rad * np.cos(phi)
+            y = rad * np.sin(phi)
+            point = np.random.randn(2)*sigma
+            point[0] += x
+            point[1] += y
+            dataset.append(point)
+    dataset = np.array(dataset, dtype=np.float32)
+
+    means = np.array([
+        [
+            rad * np.cos(2 * np.pi * (j / 8.)), 
+            rad * np.sin(2 * np.pi * (j / 8.))
+        ] for j in range(8)])
+
+    return dataset, means
+
 def prepare_25gaussian_data(batch_size=1000, 
                             sigma=0.05,
+                            rad=2,
                             random_seed=42):
     dataset = []
     for i in range(batch_size//25):

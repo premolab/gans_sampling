@@ -1,4 +1,4 @@
-import classification as cl
+import tools.sampling_utils.classification as cl
 from tempfile import mkdtemp
 #import mlpaper.benchmark_tools as bt
 import mlpaper.classification as btc

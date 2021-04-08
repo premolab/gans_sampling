@@ -4,10 +4,10 @@ import os
 import torch
 from scipy.special import expit
 
-import mh
-import classification as cl
+from .mh import mh_sample
+import tools.sampling_utils.classification as cl
 
-from mhgan_utils import discriminator_analysis
+from .mhgan_utils import discriminator_analysis
 from tqdm import tqdm 
 
 def validate_scores(scores):
@@ -240,7 +240,7 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
 
     #print('image dumps...')
     # Some image dumps in case we want to actually look at generated images
-    pickers = {'MH': mh.mh_sample}
+    pickers = {'MH': mh_sample}
     X, picked, cap_out, alpha = enhance_samples_series(gen_disc_f, 
                                                        scores_real_df, 
                                                        clf_df, 

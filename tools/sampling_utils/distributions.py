@@ -2,7 +2,7 @@ import numpy as np
 import torch, torch.nn as nn
 import torch.nn.functional as F
 
-from general_utils import DotDict
+from .general_utils import DotDict
 
 torchType = torch.float32
 class Target(nn.Module):

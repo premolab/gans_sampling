@@ -6,7 +6,7 @@ from torch.distributions import (MultivariateNormal,
                                  Independent, 
                                  Uniform)
 
-from distributions import (Target, 
+from .distributions import (Target, 
                            Gaussian_mixture, 
                            IndependentNormal,
                            init_independent_normal)
@@ -90,7 +90,8 @@ def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
         z = z - grad_step * grad + eps        
         z = z.data
         z.requires_grad_(True)
-    z_sp.append(z)
+    with torch.no_grad():
+        z_sp.append(z.detach().clone())
     return z_sp
 
 
@@ -650,7 +651,7 @@ def i_ais_b_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rho):
     return z_sp, acceptence_rate
     
 
-def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, rhos):
+def citerais_mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5):
     z_sp = [z[:, -1, :].clone().detach()]
     batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1  #??
@@ -861,13 +862,13 @@ def citerais_mala_dynamics(z, target, n_steps, grad_step, eps_scale, N, betas, r
     return z_sp, 1.0
 
 
-def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos):
+def citerais_mala_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5):
     z_last = []
     zs = []
     for i in tqdm(range(0, n, batch_size)):
         z = proposal.sample([batch_size, len(betas)])
         z.requires_grad_(True)
-        z_sp, _ = citerais_mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos)
+        z_sp, _ = citerais_mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=do_ar, max_n_rej=max_n_rej, pbern=pbern)
         last = z_sp[-1].data.cpu().numpy()
         z_last.append(last)
         zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))
@@ -877,11 +878,24 @@ def ais_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size,
     return z_last_np, zs
 
 
-def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5):
+def citerais_ula_dynamics(z, 
+                        target, 
+                        proposal, 
+                        n_steps, 
+                        grad_step, 
+                        eps_scale, 
+                        N, 
+                        betas, 
+                        rhos, 
+                        do_ar=True, 
+                        max_n_rej=10, 
+                        pbern=0.5,
+                        n_save=None):
     '''
     do_ar: bool - include path from the privious step to N current paths
     max_n_rej: int - maximum number of rejections together, if reached - don't reject this step (aka refreshing)
     '''
+    n_save = n_steps if n_save is None else n_save
     #T = len(betas)
     batch_size, T, z_dim = z.shape
     device = z.device
@@ -906,7 +920,7 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
 
     z_sp = [z[:, -1, :].clone().detach()]
     #z_sp = [z.clone().detach()]
-    traj_hist = [z[:5].clone().detach()]
+    traj_hist = [] # [z[:5].clone().detach()]
     #batch_size, T, z_dim = z.shape[0], z.shape[1], z.shape[2]
     T = T - 1  #??
     # T = len(betas) - 2
@@ -1007,8 +1021,7 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
             energy[:, t, 1:] = E_t.detach().clone()
             grads[:, t, 1:, :] = grad_t.detach().clone()
 
-        traj_hist.append(Z[:5, ..., 1, :].detach().clone())
-            
+        #traj_hist.append(Z[:5, ..., 1, :].detach().clone())            
         log_weights = -(betas_diff[None, :, None] * energy[:, 1:, :]).sum(1)
             
         max_logs = torch.max(log_weights, dim = 1)[0]
@@ -1018,7 +1031,6 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
         weights = weights/sum_weights[:, None]
         weights[weights != weights] = 0.
         weights[weights.sum(1) == 0.] = 1.
-        
         if not do_ar:
             weights[:, 0, ...] = 0.
 
@@ -1029,22 +1041,24 @@ def citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N,
         indices = torch.multinomial(weights, 1).squeeze().tolist()
         n_rej[n_rej > max_n_rej] = 0
 
-
         z = Z[np.arange(batch_size), :, indices, :]
         E = energy[np.arange(batch_size), :, indices]
         grad = grads[np.arange(batch_size), :, indices, :]
+        if len(z_sp) == n_save:
+            z_sp = z_sp[1:]
         z_sp.append(z[:, -1, :].detach().clone())
         # z_sp.append(z.detach().clone())
 
     return z_sp, 1.0, traj_hist
 
-def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5):
+
+def citerais_ula_sampling(target, proposal, n_steps, grad_step, eps_scale, n, batch_size, N, betas, rhos, do_ar=True, max_n_rej=10, pbern=0.5, n_save=None):
     z_last = []
     zs = []
     for i in tqdm(range(0, n, batch_size)):
         z = proposal.sample([batch_size, len(betas)])
         z.requires_grad_(True)
-        z_sp, _, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=do_ar, max_n_rej=max_n_rej, pbern=pbern)
+        z_sp, _, _ = citerais_ula_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, N, betas, rhos, do_ar=do_ar, max_n_rej=max_n_rej, pbern=pbern, n_save=n_save)
         last = z_sp[-1].data.cpu().numpy()
         z_last.append(last)
         zs.append(np.stack([o.data.cpu().numpy() for o in z_sp], axis=0))

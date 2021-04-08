@@ -59,6 +59,23 @@ class Linear(Calibrator):
         return y_calib
 
 
+class LogisticOverLogits(Calibrator):
+    def __init__(self):
+        self.clf = LogisticRegression()
+
+    def fit(self, y_pred, y_true):
+        assert y_true is not None
+        if y_pred.ndim == 1:
+            y_pred = y_pred.reshape(-1, 1)
+        self.clf.fit(y_pred, y_true)
+
+    def predict(self, y_pred):
+        if y_pred.ndim == 1:
+            y_pred = y_pred.reshape(-1, 1)
+        y_calib = self.clf.predict_proba(y_pred)[:, 1]
+        return y_calib
+    
+
 class Isotonic(Calibrator):
     def __init__(self):
         self.clf = IsotonicRegression(y_min=0.0, y_max=1.0,

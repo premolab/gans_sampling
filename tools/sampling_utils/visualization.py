@@ -8,13 +8,15 @@ from functools import partial
 import random
 import itertools
 
+from scipy.stats import gaussian_kde
+
 import torch
 from torch.distributions import Normal
 
-from general_utils import send_file_to_remote
+from .general_utils import send_file_to_remote
 
-from mh_sampling import mh_sampling
-from ebm_sampling import (langevin_sampling, 
+from .mh_sampling import mh_sampling
+from .ebm_sampling import (langevin_sampling, 
                           mala_sampling,
                           gan_energy)
 
@@ -29,34 +31,45 @@ def sample_fake_data(generator, X_train,
                      batch_size_sample = 5000,
                      path_to_save_remote = None,
                      port_to_remote = None):
-    fake_data = generator.sampling(batch_size_sample).data.cpu().numpy()
-    if scaler is not None:
-       fake_data = scaler.inverse_transform(fake_data)
-    plt.figure(figsize=(8, 8))
-    plt.xlim(-x_range, x_range)
-    plt.ylim(-y_range, y_range)
-    plt.title("Training and generated samples", fontsize=20)
-    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
-                marker='o', label = 'training samples')
-    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.5, color='blue', 
-                marker='o', label = 'samples by G')
-    plt.legend()
-    plt.grid(True)
-    if path_to_save is not None:
-       cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-       if epoch is not None:
-          plot_name = cur_time + f'_gan_sampling_{epoch}_epoch.pdf'
-       else:
-          plot_name = cur_time + f'_gan_sampling.pdf'
+   fake_data = generator.sampling(batch_size_sample).data.cpu().numpy()
+   if scaler is not None:
+      fake_data = scaler.inverse_transform(fake_data)
+   kernel = gaussian_kde(np.unique(fake_data, axis=0).T)
 
-       path_to_plot = os.path.join(path_to_save, plot_name)
-       plt.savefig(path_to_plot)
-       send_file_to_remote(path_to_plot,
+   x = np.linspace(-x_range, x_range, 100)
+   y = np.linspace(-y_range, y_range, 100)
+   xx, yy = np.meshgrid(x, y)
+   stacked = np.stack([xx.reshape(-1), yy.reshape(-1)], 1)
+   vals = kernel(stacked.T)
+   vals = vals.reshape(xx.shape)
+
+   plt.figure(figsize=(8, 8))
+   plt.xlim(-x_range, x_range)
+   plt.ylim(-y_range, y_range)
+   plt.contourf(xx, yy, vals, cmap='Greens')
+   #plt.title("Training and generated samples", fontsize=20)
+   #plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
+   #            marker='o', label = 'training samples')
+   #plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.5, color='blue', 
+   #            marker='o', label = 'samples by G')
+   plt.legend()
+   plt.grid(True)
+   if path_to_save is not None:
+      cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+      if epoch is not None:
+         # plot_name = cur_time + f'_gan_sampling_{epoch}_epoch.pdf'
+         plot_name = f'{epoch}_generator_dist.pdf'
+      else:
+         plot_name = cur_time + f'_gan_sampling.pdf'
+
+      path_to_plot = os.path.join(path_to_save, plot_name)
+      plt.savefig(path_to_plot)
+      send_file_to_remote(path_to_plot,
                            port_to_remote, 
                            path_to_save_remote)
-       plt.close()
-    else:
-       plt.show()
+      plt.close()
+   else:
+      plt.show()
 
 def plot_fake_data_mode(fake, X_train, mode, 
                         path_to_save = None, 
@@ -164,7 +177,7 @@ def plot_discriminator_2d(discriminator,
     r_y=y_numpy.max()
     #small_heatmap = sigmoid_heatmap[:-1, :-1]
     figure, axes = plt.subplots(figsize=figsize)
-    z = axes.contourf(x, y, heatmap, 10, cmap='viridis')
+    z = axes.contourf(x, y, heatmap, 20, cmap='viridis')
     if epoch is not None:
        title = f"Discriminator heatmap, epoch = {epoch}"
     else:
@@ -367,8 +380,9 @@ def epoch_visualization(X_train,
                         normalize_to_0_1 = True,
                         plot_mhgan = False):
     if path_to_save is not None:
-        cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
-        plot_name = cur_time + f'_gan_losses_{epoch}_epoch.pdf'
+        #cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+        #plot_name = cur_time + f'_gan_losses_{epoch}_epoch.pdf'
+        plot_name = f'gan_losses.pdf'
         path_to_plot = os.path.join(path_to_save, plot_name)
         subtitle_for_losses = "Training process for discriminator and generator"
         if (use_gradient_penalty):
@@ -389,21 +403,27 @@ def epoch_visualization(X_train,
         axs[0].legend()
         axs[1].legend()
         fig.savefig(path_to_plot)
-        if (mode in ['25_gaussians', 'swissroll']):
-            if mode == '25_gaussians':
+        if (mode in ['25_gaussians', '2d_grid', 'swissroll', '2d_ring']):
+            if mode == '25_gaussians' or mode == '2d_grid':
                x_range = 3.0
                y_range = 3.0
-            else:
+            elif mode == 'swissroll':
                x_range = 2.0
                y_range = 2.0
-            plot_name = cur_time + f'_discriminator_{epoch}_epoch.pdf'
+            elif mode == '2d_ring':
+               x_range = 2.5
+               y_range = 2.5
+
+            # plot_name = cur_time + f'_discriminator_{epoch}_epoch.pdf'
+            plot_name = f'{epoch}_discriminator.pdf'
             path_to_plot_discriminator = os.path.join(path_to_save, plot_name)
-            discriminator_2d_visualization(discriminator,
+            plot_discriminator_2d(discriminator,
                                            x_range,
                                            y_range,
                                            path_to_plot_discriminator,
                                            epoch,
                                            scaler=scaler,
+                                           normalize_to_0_1=False,
                                            port_to_remote=port_to_remote, 
                                            path_to_save_remote=path_to_save_remote)
             if plot_mhgan:
@@ -433,6 +453,8 @@ def epoch_visualization(X_train,
                              batch_size_sample=batch_size_sample,
                              port_to_remote=port_to_remote, 
                              path_to_save_remote=path_to_save_remote)
+
+            
         
         
 
@@ -551,4 +573,4 @@ def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
 
     if savepath is not None:
         plt.savefig(savepath)
-    plt.show()
+    #plt.show()

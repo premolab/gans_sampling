@@ -6,8 +6,8 @@ import random
 
 import torch, torch.nn as nn
 
-from general_utils import DotDict
-from distributions import Gaussian_mixture
+from tools.sampling_utils.general_utils import DotDict
+from tools.sampling_utils.distributions import Gaussian_mixture
 
 dim = 2
 device = torch.device('cpu')

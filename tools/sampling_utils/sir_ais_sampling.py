@@ -204,13 +204,33 @@ def run_experiments_gaussians(dim_arr,
                                                 method_params['eps_scale'],
                                                 method_params['N'], 
                                                 method_params['betas'],
-                                                method_params['rho'])         
+                                                method_params['rho'])      
+      elif method == 'mala':
+         history, acceptence = ebm_sampling.mala_dynamics(
+                                                start, 
+                                                target.log_prob, 
+                                                proposal, 
+                                                method_params['n_steps'], 
+                                                method_params['grad_step'], 
+                                                method_params['eps_scale'],
+                                                acceptance_rule='Hastings')
+      elif method == 'ula':
+         history = ebm_sampling.langevin_dynamics(
+                                                start, 
+                                                target.log_prob, 
+                                                proposal, 
+                                                method_params['n_steps'], 
+                                                method_params['grad_step'], 
+                                                method_params['eps_scale'],
+                                                )
+         acceptence = 1.0
+         #print(history)  
       else:
          raise ValueError('Unknown sampling method')    
       last_history = history[max(1, len(history)-num_points_in_chain - 1):]
-      all_history_np = torch.stack(history, axis = 0).cpu().numpy()
+      all_history_np = torch.stack(history, axis = 0).detach().cpu().numpy()
 
-      result_np = torch.stack(last_history, axis = 0).cpu().numpy()
+      result_np = torch.stack(last_history, axis = 0).detach().cpu().numpy()
       if strategy_mean == 'starts':
          result_var = np.var(result_np, axis = 1, ddof=1).mean(axis = 0).mean()
          result_mean = np.mean(result_np, axis = 1).mean(axis = 0).mean()
@@ -242,8 +262,8 @@ def run_experiments_gaussians(dim_arr,
       dict_results[mode_init]['mean_loc'].append(result_mean)
       dict_results[mode_init]['mean_var'].append(result_var)
       dict_results[mode_init]['ess'].append(ess)
-      dict_results[mode_init]['history_first'].append(first_coord_history)
-      dict_results[mode_init]['history_norm'].append(norm_history)
+      #dict_results[mode_init]['history_first'].append(first_coord_history)
+      #dict_results[mode_init]['history_norm'].append(norm_history)
    
    return dict_results
 
@@ -350,6 +370,25 @@ def run_experiments_2_gaussians(dim_arr,
                                             method_params['N'], 
                                             method_params['betas'], 
                                             method_params['rhos'])
+
+      elif method == 'ula':
+         history = ebm_sampling.langevin_dynamics(start, 
+                                            target.log_prob,
+                                            proposal, 
+                                            method_params['n_steps'], 
+                                            method_params['grad_step'], 
+                                            method_params['eps_scale'],
+                                            )
+         acceptence = 1.0
+
+      elif method == 'mala':
+         history, acceptence = ebm_sampling.mala_dynamics(start, 
+                                            target.log_prob,
+                                            proposal, 
+                                            method_params['n_steps'], 
+                                            method_params['grad_step'], 
+                                            method_params['eps_scale'],
+                                            )
          #history = [x[:, -1, :] for x in history]
 
       elif method == 'i_ais_z':
@@ -384,12 +423,12 @@ def run_experiments_2_gaussians(dim_arr,
       else:
          raise ValueError('Unknown sampling method')    
       last_history = history[(-num_points_in_chain - 1):-1]
-      all_history_np = torch.stack(history, axis = 0).cpu().numpy()
-      torch_last_history = torch.stack(last_history, axis = 0).cpu()
+      all_history_np = torch.stack(history, axis = 0).detach().cpu().numpy()
+      torch_last_history = torch.stack(last_history, axis = 0).detach().cpu()
          
       evolution = Evolution(None, locs=torch.stack(locs, 0).cpu(), sigma=scale_target)  
 
-      result_np = torch.stack(last_history, axis = 0).cpu().numpy()
+      result_np = torch.stack(last_history, axis = 0).detach().cpu().numpy()
          
       modes_var_arr = []
       modes_mean_arr = []

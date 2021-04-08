@@ -11,7 +11,7 @@ import ot
 from matplotlib import pyplot as plt
 from scipy.stats import chi2, entropy
 
-from general_utils import to_var
+from .general_utils import to_var
 
 def inception_score(imgs, device=None, batch_size=32, resize=False, splits=10):
     """Computes the inception score of the generated images imgs
@@ -78,7 +78,7 @@ def inception_score(imgs, device=None, batch_size=32, resize=False, splits=10):
     return np.mean(split_scores), np.std(split_scores)
 
 @torch.no_grad()
-def get_pis_estimate(X_gen, target_log_prob, n_pts=4000, sample_method='grid', density_method='gmm'):
+def get_pis_estimate(X_gen, target_log_prob, n_pts=4000, sample_method='grid', density_method='gmm', n_components=25):
     target_pdf = lambda x: target_log_prob(torch.FloatTensor(x)).exp().detach().cpu().numpy()
 
     if density_method == 'kde':
@@ -86,7 +86,7 @@ def get_pis_estimate(X_gen, target_log_prob, n_pts=4000, sample_method='grid', d
         pi_g_f = lambda x: G_ker.pdf(x.reshape(2, -1))
 
     elif density_method == 'gmm':
-        gm_g = mixture.GaussianMixture(n_components=25)
+        gm_g = mixture.GaussianMixture(n_components=n_components)
         gm_g.fit(X_gen.detach())
         pi_g_f = lambda x: np.exp(gm_g.score_samples(x))
     optD = lambda x: target_pdf(x) / (target_pdf(x) + pi_g_f(x) + 1e-8)
@@ -97,7 +97,6 @@ def get_pis_estimate(X_gen, target_log_prob, n_pts=4000, sample_method='grid', d
     elif sample_method == 'mc':
         pass
         
-
     pi_d = target_pdf(X)
     pi_g = pi_g_f(X)
 
@@ -124,6 +123,8 @@ class Evolution(object):
         self.js_pis = []
         self.l2_div = []
 
+        self.n_modes = []
+
     @staticmethod
     def make_assignment(X_gen, locs, sigma=0.05, q=0.95):
         n_modes, x_dim = locs.shape
@@ -145,13 +146,12 @@ class Evolution(object):
         found_modes = 0
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
-            #print(xs.shape)
             if xs.shape[0] > 1:
                 std_ = (1 / (x_dim * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
                 std += std_
                 found_modes += 1
         std /= found_modes
-        return std
+        return std, found_modes
 
     @staticmethod
     def compute_mode_mean(X_gen, assignment):
@@ -164,7 +164,6 @@ class Evolution(object):
         found_modes_ind = []
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
-            #print(xs.shape)
             if xs.shape[0] > 1:
                 means[mode_id] = xs.mean(0)
                 found_modes_ind.append(mode_id)
@@ -207,9 +206,8 @@ class Evolution(object):
         
         if self.locs is not None and self.sigma is not None:
             assignment = Evolution.make_assignment(X_gen, self.locs, self.sigma)
-            #print(assignment.shape)
-            mode_std = Evolution.compute_mode_std(X_gen, assignment)
-            #print(mode_std)
+            mode_std, found_modes = Evolution.compute_mode_std(X_gen, assignment)
+            self.n_modes.append(found_modes)
             self.mode_std.append(mode_std.item())
             h_q_r = Evolution.compute_high_quality_rate(assignment)
             self.high_quality_rate.append(h_q_r.item())
@@ -217,14 +215,15 @@ class Evolution(object):
             self.jsd.append(jsd.item())
 
         if self.target_log_prob is not None:
-            pi_d, pi_g, opt_ds, X = get_pis_estimate(X_gen, self.target_log_prob, n_pts=4000, sample_method='grid', density_method='gmm')
-            kl = pi_g * (np.log(pi_g) - np.log(pi_d + 1e-10))
+            pi_d, pi_g, opt_ds, X = get_pis_estimate(X_gen, self.target_log_prob, n_pts=4000, 
+                                        sample_method='grid', density_method='gmm', n_components=self.locs.shape[0])
+            kl = pi_g * (np.log(pi_g + 1e-10) - np.log(pi_d + 1e-10))
             kl[pi_g == 0.] = 0.
             kl = np.mean(kl).item()
             self.kl_pis.append(kl)
 
             m = .5 * (pi_g + pi_d)
-            js = .5 * (pi_g * (np.log(pi_g) - np.log(m)) + pi_d * (np.log(pi_d) - np.log(m)))
+            js = .5 * (pi_g * (np.log(pi_g + 1e-10) - np.log(m)) + pi_d * (np.log(pi_d) - np.log(m)))
             js[(pi_g == 0.) + (pi_d == 0.)] = 0.
             js = np.mean(js).item()
             self.js_pis.append(js)

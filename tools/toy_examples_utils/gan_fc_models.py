@@ -2,9 +2,9 @@ import numpy as np
 import random
 import torch, torch.nn as nn
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
+# torch.manual_seed(42)
+# np.random.seed(42)
+# random.seed(42)
 device_default = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def weights_init_1(m):
@@ -77,21 +77,28 @@ class Discriminator_fc(nn.Module):
                  n_layers = 4,
                  n_hid = 100, 
                  non_linear = nn.ReLU(),
+                 scale=1.,
                  device = device_default):
         super(Discriminator_fc, self).__init__()
         self.non_linear = non_linear
         self.device = device
         self.n_hid = n_hid
         self.n_in = n_in
+        self.scale = scale
         layers = [nn.Linear(self.n_in, self.n_hid), non_linear]
         for i in range(n_layers - 1):
             layers.extend([nn.Linear(n_hid, n_hid), non_linear])
         layers.append(nn.Linear(n_hid, 1))
 
+        self.calib_layer = None
+
         self.layers = nn.Sequential(*layers)
       
     def forward(self, z):
+        z = z / self.scale**2.
         z = self.layers.forward(z)
+        if self.calib_layer is not None:
+            z = self.calib_layer(z)
         return z
 
     def init_weights(self, init_fun=weights_init_1, random_seed=None):

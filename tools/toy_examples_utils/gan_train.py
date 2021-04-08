@@ -7,15 +7,15 @@ import time
 import datetime
 import os
 
-import sys
-sys.path.append("../sampling_utils")
+#import sys
+#sys.path.append("../sampling_utils")
 
-from toy_examples_utils import prepare_train_batches
-from visualization import epoch_visualization
+from tools.toy_examples_utils.toy_examples_utils import prepare_train_batches
+from tools.sampling_utils.visualization import epoch_visualization
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
+# torch.manual_seed(42)
+# np.random.seed(42)
+# random.seed(42)
 device_default = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def calc_gradient_penalty(D, real_data, fake_data, batch_size, Lambda = 0.1,
@@ -116,7 +116,7 @@ def train_gan(X_train,
        criterion = None
 
     try:
-        for epoch in range(num_epochs):
+        for epoch in range(1, num_epochs+1):
             print(f"Start epoch = {epoch}")
 
             for p in discriminator.parameters():  # reset requires_grad
@@ -134,7 +134,6 @@ def train_gan(X_train,
                 noise = generator.make_hidden(batch_size=cur_batch_size)
                 noise = autograd.Variable(noise).to(device)
                 fake_data = generator(noise)
-                
 
                 d_real_data = discriminator(real_data)
                 d_fake_data = discriminator(fake_data)
@@ -223,18 +222,23 @@ def train_gan(X_train,
                                    normalize_to_0_1=normalize_to_0_1,
                                    plot_mhgan = plot_mhgan)
                if path_to_models is not None:
-                  cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
+                #  cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
 
-                  discriminator_model_name = cur_time + '_discriminator.pth'
-                  generator_model_name = cur_time + '_generator.pth'
+                #   discriminator_model_name = cur_time + '_discriminator.pth'
+                #   generator_model_name = cur_time + '_generator.pth'
+
+                  discriminator_model_name = f'{epoch}_discriminator.pth'
+                  generator_model_name = f'{epoch}_generator.pth'
+
                   path_to_discriminator = os.path.join(path_to_models, discriminator_model_name)
                   path_to_generator = os.path.join(path_to_models, generator_model_name)
               
                   torch.save(discriminator.state_dict(), path_to_discriminator)
                   torch.save(generator.state_dict(), path_to_generator)
 
-                  discriminator_optimizer_name = cur_time + '_opt_discriminator.pth'
-                  generator_optimizer_name = cur_time + '_opt_generator.pth'
+                  discriminator_optimizer_name = f'{epoch}_opt_discriminator.pth'
+                  generator_optimizer_name = f'{epoch}_opt_generator.pth'
+
                   path_to_opt_discriminator = os.path.join(path_to_models, discriminator_optimizer_name)
                   path_to_opt_generator = os.path.join(path_to_models, generator_optimizer_name)
 

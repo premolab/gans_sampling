@@ -1,1 +1,11 @@
 Experiments based on papers https://arxiv.org/abs/1811.11357, https://arxiv.org/abs/2003.06060.
+
+To install the dependencies and libraries
+```bash
+pip install -e .
+pip install -r requirements.txt
+```
+
+```bash
+chmod +x runs/*
+```
