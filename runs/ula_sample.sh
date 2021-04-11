@@ -37,7 +37,7 @@ python3 scripts/gaussians_mcmc.py \
             --n_steps 200 \
             --batch_size 10 \
             --mala_afterall \
-            --beta_deg 0.1
+            --beta_deg 0.125
 
 python3 scripts/gaussians_mcmc.py \
             --gan_data_dir $1 \
@@ -51,7 +51,7 @@ python3 scripts/gaussians_mcmc.py \
             --T 150 \
             --n_steps 200 \
             --batch_size 10 \
-            --beta_deg 0.1
+            --beta_deg 0.125
 
 python3 scripts/gaussians_mcmc.py \
             --gan_data_dir $1 \
@@ -65,7 +65,7 @@ python3 scripts/gaussians_mcmc.py \
             --n_steps 200 \
             --batch_size 10 \
             --mala_afterall \
-            --beta_deg 0.1
+            --beta_deg 0.125
 
 python3 scripts/gaussians_mcmc.py \
             --gan_data_dir $1 \
@@ -79,4 +79,4 @@ python3 scripts/gaussians_mcmc.py \
             --batch_size 10 \
             --calibrate \
             --model_idx 35 40 45 50 55 60 70 80 90 \
-            --beta_deg 0.1
+            --beta_deg 0.125

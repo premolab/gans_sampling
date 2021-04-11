@@ -9,14 +9,14 @@ from torch.autograd import Variable
 import torch.optim as optim
 import torchvision.transforms as transforms
 
-from dataloader import GenDataset
-from logger import Logger
+from .dataloader import GenDataset
+from .logger import Logger
 
-import sys
-sys.path.append("../sampling_utils")
+# import sys
+# sys.path.append("../sampling_utils")
 
-from metrics import inception_score
-from general_utils import (print_network, 
+from tools.sampling_utils.metrics import inception_score
+from tools.sampling_utils.general_utils import (print_network, 
                            init_params_xavier,
                            to_var,
                            to_np) 

@@ -9,6 +9,7 @@ from easydict import EasyDict as edict
 from matplotlib import pyplot as plt
 import re
 from sklearn.utils import shuffle
+from torch._C import device
 
 from tools.sampling_utils.ebm_sampling import (
     gan_energy,
@@ -105,14 +106,16 @@ def main(args):
         scaler = None
     target_sample = X_train[np.random.choice(np.arange(X_train.shape[0]), 1000)]
     
-    target_args = edict()
-    target_args.device = args.device
-    target_args.num_gauss = locs.shape[0]
-    target_args.p_gaussians = [torch.tensor(1./target_args.num_gauss)]*target_args.num_gauss
-    target_args.locs = torch.from_numpy(locs).float()
-    target_args.covs = [(sigma**2)*torch.eye(locs.shape[1]).to(args.device)]*target_args.num_gauss
-    target_args.dim = locs.shape[1]
-    true_target = Gaussian_mixture(target_args).log_prob
+    # target_args = edict()
+    # target_args.device = args.device
+    # target_args.num_gauss = locs.shape[0]
+    # target_args.p_gaussians = [torch.tensor(1./target_args.num_gauss)]*target_args.num_gauss
+    # target_args.locs = torch.from_numpy(locs).float()
+    # target_args.covs = [(sigma**2)*torch.eye(locs.shape[1]).to(args.device)]*target_args.num_gauss
+    # target_args.dim = locs.shape[1]
+    # true_target = Gaussian_mixture(target_args).log_prob
+
+    true_target = None
     
     args.model_idx = [-1] if args.model_idx is None else args.model_idx
     for idx in args.model_idx:
@@ -222,9 +225,10 @@ def main(args):
 
             print('Estimate density...')
             save_path = Path(args.save_dir, f'{idx}_{args.save_prefix}{method}.pdf')
-            plot_gen_dist(Xs_gen[int(args.burn_in * Xs_gen.shape[0]):].reshape(-1, locs.shape[1])[-1500:], x_range, y_range)
+            plot_gen_dist(Xs_gen[int(args.burn_in * Xs_gen.shape[0]):].reshape(-1, locs.shape[1])[-500:], x_range, y_range)
             plt.savefig(save_path)
             plt.close()
+
 
         save_path = Path(args.save_dir, f'{idx}_{args.save_prefix}metrics.pdf')
         plot_chain_metrics(every=every, savepath=save_path, sigma=sigma, **evols)

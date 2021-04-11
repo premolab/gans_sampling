@@ -10,9 +10,6 @@ import argparse
 
 import torch, torch.nn as nn
 
-# from paths import (path_to_save_remote, 
-#                    #path_to_save_local,
-#                    port_to_remote) 
 
 from tools.toy_examples_utils.toy_examples_utils import (prepare_2d_ring_data,
                                 prepare_25gaussian_data,
@@ -92,6 +89,20 @@ def main(args):
     elif args.data_type == 'swissroll':
         X_train = prepare_swissroll_data(args.train_dataset_size)
         means = None
+
+    elif args.data_type == '1200d':
+        num_clusters = num_gaussian_per_dim ** dim
+        num_samples = num_samples_in_cluster * num_clusters
+        coords_per_dim = np.linspace(-coord_limits, 
+                                    coord_limits, 
+                                    num = num_gaussian_per_dim)
+        copy_coords = list(np.tile(coords_per_dim, (dim, 1)))
+        centers = np.array(np.meshgrid(*copy_coords)).T.reshape(-1, dim)
+        dataset = sklearn.datasets.make_blobs(n_samples = 100*700, 
+                                            n_features = 1200, 
+                                            centers = centers, 
+                                            cluster_std = sigma,
+                                            random_state = random_seed)[0]
     # if args.std_scale:
     #     scaler = StandardScaler()
     #     X_train_peprocessed = scaler.fit_transform(X_train)
@@ -125,9 +136,9 @@ def main(args):
                         device=args.device).to(args.device)
     print(D)
 
-    # for n, p in G.named_parameters():
-    #     if 'weight' in n:
-    #         torch.nn.init.orthogonal_(p, gain=0.8)
+    for n, p in G.named_parameters():
+        if 'weight' in n:
+            torch.nn.init.orthogonal_(p, gain=0.8)
         # elif 'bias' in n:
         #     torch.nn.init.zeros_(p)
 

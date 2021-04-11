@@ -5,6 +5,6 @@ python3 scripts/train_fc_synth.py   --data_type 2d_grid \
                                     --k_d 10 \
                                     --n_layers_d 2 \
                                     --batch_size 512 \
-                                    --n_epochs 3000 \
+                                    --n_epochs 5000 \
                                     --sigma 0.02 \
-                                    --num_epoch_for_save 10
+                                    --num_epoch_for_save 100

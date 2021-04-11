@@ -13,6 +13,7 @@ from scipy.stats import chi2, entropy
 
 from .general_utils import to_var
 
+
 def inception_score(imgs, device=None, batch_size=32, resize=False, splits=10):
     """Computes the inception score of the generated images imgs
     imgs -- Torch dataset of (3xHxW) numpy images normalized in the range [0, 1]
@@ -143,14 +144,17 @@ class Evolution(object):
         x_dim = X_gen.shape[-1]
         n_modes = assignment.shape[1]
         std = torch.FloatTensor([0.0])
+        n = 0
         found_modes = 0
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
             if xs.shape[0] > 1:
                 std_ = (1 / (x_dim * (xs.shape[0] - 1)) * ((xs - xs.mean(0))**2).sum())**.5
-                std += std_
+                std += std_ * xs.shape[0]
+                n += xs.shape[0]
                 found_modes += 1
-        std /= found_modes
+        #std /= found_modes
+        std /= n
         return std, found_modes
 
     @staticmethod
@@ -184,7 +188,7 @@ class Evolution(object):
         sample_dist /= sample_dist.sum()
         uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)] + [0]).to(assignment.device)
         M = .5 * (uniform_dist + sample_dist)
-        JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)) + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M))
+        JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-10) / M)) + .5 * (uniform_dist * torch.log((uniform_dist + 1e-10) / M))
 
         JSD[sample_dist == 0.] = 0.
         JSD[uniform_dist == 0.] = 0.
@@ -238,6 +242,7 @@ class Evolution(object):
     def as_dict(self):
         d = dict(mode_std=self.mode_std, 
                 hqr=self.high_quality_rate,
+                n_modes=self.n_modes,
                 jsd=self.jsd,
                 emd=self.emd,
                 kl_pis=self.kl_pis,
