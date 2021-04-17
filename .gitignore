@@ -3,3 +3,4 @@
 *.egg-info
 /build
 /dist
+/samples/cifar10/downloaded_dataset/*
