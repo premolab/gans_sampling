@@ -28,7 +28,7 @@ import copy
 
 def compute_sir_log_weights(x, target, proposal, flow):
     x_pushed, log_jac = flow(x)
-    log_weights = target.log_prob(x_pushed) + log_jac - proposal.log_prob(x)
+    log_weights = target(x_pushed) + log_jac - proposal.log_prob(x)
     return log_weights, x_pushed
 
 
