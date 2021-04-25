@@ -56,6 +56,29 @@ def gan_energy(z, generator, discriminator,
     else:
        return -energy
 
+def gan_energy_stylegan2_ada(z, generator, discriminator, truncation_psi, noise_mode,
+                             proposal, normalize_to_0_1, log_prob=False, z_transform=None):
+    label = torch.zeros([z.shape[0], generator.c_dim], device=z.device)
+    if z_transform is None:
+        generator_points = generator(z, label, 
+                                     truncation_psi=truncation_psi, noise_mode=noise_mode)
+    else:
+        generator_points = generator(z_transform(z), label, 
+                                     truncation_psi=truncation_psi, noise_mode=noise_mode)
+    if normalize_to_0_1:
+        gan_part = -discriminator(generator_points, label).view(-1)
+    else:
+        sigmoid_gan_part = discriminator(generator_points, label)
+        gan_part = -(torch.log(sigmoid_gan_part) - \
+                     torch.log1p(-sigmoid_gan_part)).view(-1)
+        
+    proposal_part = -proposal.log_prob(z)
+
+    energy = gan_part + proposal_part
+    if not log_prob:
+        return energy
+    else:
+        return -energy
 
 def sampling_f(dynamics, target, proposal, 
                batch_size, n, path_to_save=None,
