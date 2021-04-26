@@ -29,14 +29,14 @@ python3 scripts/stacked_mnist_mcmc.py \
             --gan_data_dir $1 \
             --data_dir ../data \
             --model_idx 49 \
-            --sampler ula \
+            --sampler citerais_ula \
             --calibrate \
             --save_prefix calib \
-            --grad_step 1e-3 \
-            --eps_scale 1e-3 \
+            --grad_step 1e-2 \
+            --eps_scale 1e-1 \
             --rho 0.95 \
-            --T 1 \
-            --n_steps 250 \
+            --T 10 \
+            --n_steps 30 \
             --batch_size 100 \
             --beta_deg 0.125 \
             --clf_path dump/StackedMNIST/mnist_clf.pth

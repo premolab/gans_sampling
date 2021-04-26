@@ -3,12 +3,12 @@ from torch import nn
 
 
 class Generator(nn.Module):
-    def __init__(self, ngpu, nc=3, nz=100, ngf=8):
-        super().__init__()
-        self.nc = nc
-        self.nz = nz
-        self.ngpu = ngpu
-        self.main = nn.Sequential(
+    def __init__(self, ngpu, nc, nz, ngf):
+      super().__init__()
+      self.ngpu = ngpu
+      self.nz = nz
+
+      self.main = nn.Sequential(
           nn.ConvTranspose2d(nz, ngf*4, 4, 1, 0, bias=False),
           nn.BatchNorm2d(ngf*4),
           nn.ReLU(True),

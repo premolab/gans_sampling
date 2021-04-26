@@ -19,10 +19,10 @@ from tools.stacked_mnist_utils.dcgan import Generator, Discriminator
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--n_epoch', type=int, default=50)
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--n_d', type=int, default=15)
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--n_epoch', type=int, default=150)
+    parser.add_argument('--lr', type=float, default=2e-4)
+    parser.add_argument('--n_d', type=int, default=1)
     parser.add_argument('--device', type=int, default=None)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--data_dir', type=str)
@@ -30,7 +30,7 @@ def parse_arguments():
     parser.add_argument('--ngpu', type=int, default=1)
     parser.add_argument('--beta1', type=float, default=0.5)
     parser.add_argument('--nz', type=int, default=64)
-    parser.add_argument('--ndf', type=int, default=32)
+    parser.add_argument('--ndf', type=int, default=64)
     parser.add_argument('--ngf', type=int, default=64)
     parser.add_argument('--save_name', type=str)
 
@@ -106,8 +106,13 @@ def main(args):
     json.dump(generator_params, Path(path_to_models, 'generator_params.json').open('w'))
     json.dump(discriminator_params, Path(path_to_models, 'discriminator_params.json').open('w'))
 
+    netD.train()
+    netG.train()
     for epoch in range(args.n_epoch):
         for i, data in enumerate(dataloader, 0):
+            netG.train()
+            netD.train()
+
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
@@ -156,6 +161,7 @@ def main(args):
                 vutils.save_image(r,
                         Path(path_to_plots, f'real_samples.png'), 
                         normalize=False)
+                netG.eval()
                 fake = netG(fixed_noise)
                 f = fake
                 #f = dataset.back_normalize(fake)

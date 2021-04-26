@@ -96,8 +96,10 @@ def main(args):
     assert models_dir.exists()
     gen_params = json.load(Path(models_dir, 'generator_params.json').open('r'))
     G = Generator(ngpu, **gen_params)
+    G.eval()
     discr_params = json.load(Path(models_dir, 'discriminator_params.json').open('r'))
     D = Discriminator(ngpu, **discr_params)
+    D.eval()
 
     path = Path(args.data_dir)
     assert path.exists()
@@ -112,6 +114,7 @@ def main(args):
         clf.load_state_dict(torch.load(clf_path))
         for p in clf.parameters():
             p.requires_grad = False
+        clf.eval()
     
     args.model_idx = [-1] if args.model_idx is None else args.model_idx
     for idx in args.model_idx:
@@ -171,7 +174,7 @@ def main(args):
 
 
         if clf is not None:
-            Xs_gen = G(torch.randn(args.batch_size*args.n_steps*args.T, 64, 1, 1).to(args.device)).detach()
+            Xs_gen = G(torch.randn(min(25000, args.batch_size*args.n_steps*args.T), 64, 1, 1).to(args.device)).detach()
             labels  = []
             fake_data =  Xs_gen.reshape(-1, 3, 28, 28).permute(1, 0, 2, 3)
             for x in fake_data:
@@ -245,7 +248,7 @@ def main(args):
                 labels  = []
                 fake_data =  Xs_gen.reshape(-1, 3, 28, 28).permute(1, 0, 2, 3)
                 for x in fake_data:
-                    out = clf(x.unsqueeze(1))
+                    out = clf(x.unsqueeze(1)[-25000:])
                     labels.append(out.argmax(1).detach())
                 labels = torch.stack(labels, 0)
                 nmodes = torch.unique(labels, dim=1).shape[1]
