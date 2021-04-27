@@ -32,7 +32,7 @@ def get_optimizer(parameters, optimizer = "Adam", lr = 1e-3):
     if optimizer == "Adam":
         return torch.optim.Adam(parameters, lr=lr)
     else:
-        raise NonImplementedError
+        raise NotImplementedError
 
 
 def get_loss(loss):
@@ -43,7 +43,7 @@ def get_loss(loss):
     if loss == "backward_kl":
         return backward_kl
     else:
-        raise NonImplementedError
+        raise NotImplementedError
 
 ###Write here f divergence
 
