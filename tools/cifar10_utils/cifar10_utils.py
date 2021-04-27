@@ -155,7 +155,8 @@ def calculate_cifar10_statistics(z_agg_step, G,
                                  path_to_save_cifar10_np,
                                  method_name,
                                  random_seed = 42,
-                                 every_step = 50):
+                                 every_step = 50,
+                                 use_conditional_model = False):
    torch.manual_seed(random_seed)
    np.random.seed(random_seed)
    random.seed(random_seed)
@@ -206,9 +207,13 @@ def calculate_cifar10_statistics(z_agg_step, G,
       print(f"sample size after deleteting nans = {no_nans_samples.shape}")
       nsamples = len(no_nans_samples)
       latent_arr = torch.FloatTensor(no_nans_samples)
-      latent_arr_transform = z_transform(latent_arr).unsqueeze(dim=1)
-      latent_dataset = LatentFixDataset(latent_arr_transform, G, 
+      if not use_conditional_model:
+         latent_arr_transform = z_transform(latent_arr).unsqueeze(dim=1)
+         latent_dataset = LatentFixDataset(latent_arr_transform, G, 
                                         device, nsamples)
+
+      else:
+         do_smth = True        
       print("start to calculate inception score...")
       start = time.time()
       (inception_score_mean, 
