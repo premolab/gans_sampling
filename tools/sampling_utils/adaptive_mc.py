@@ -39,7 +39,10 @@ def adaptive_sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha, flo
 
     for _ in range(n_steps):
         z_pushed, _ = flow(z)
+        #for _ in range(K_mala):
+        #    z_pushed = mala_step(z_pushed)
         z_sp.append(z_pushed)
+        
         z_copy = z.unsqueeze(1).repeat(1, N, 1)
         ind = torch.randint(0, N, (batch_size,)).tolist() ###hy not [0]*batcjsize ?
         W = proposal.sample([batch_size, N])
@@ -65,6 +68,7 @@ def adaptive_sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha, flo
 
         z = X[np.arange(batch_size), indices, :]
         z = z.data
+        
     z_pushed, _ = flow(z)
     z_sp.append(z_pushed)
     return z_sp
