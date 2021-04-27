@@ -68,7 +68,7 @@ def backward_kl(target, proposal, flow, y):
     grad_est = - log_jac - target(x)
     return est.mean(), grad_est.mean()
 
-def mix_kl(target, proposal, flow, y, alpha= .5):
+def mix_kl(target, proposal, flow, y, alpha= .99):
     est_f, grad_est_f = forward_kl(target, proposal, flow, y)
     est_b, grad_est_b = backward_kl(target, proposal, flow, y)
     return alpha * est_f + (1. - alpha) * est_b, alpha * grad_est_f + (1. - alpha) * grad_est_b 
