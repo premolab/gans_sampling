@@ -237,56 +237,6 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance
        
    return z_sp, acceptence
 
-    
-# def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance_rule='Hastings'):
-#     z_sp = [z.clone().detach()]
-#     batch_size, z_dim = z.shape[0], z.shape[1]
-#     device = z.device
-
-#     uniform = Uniform(low = 0.0, high = 1.0)
-#     acceptence = torch.zeros(batch_size).to(device)
-
-#     for _ in range(n_steps):
-#         eps = eps_scale * proposal.sample([batch_size])
-
-#         E, grad = grad_energy(z, target, x=None)
-        
-#         new_z = z - grad_step * grad + eps
-#         new_z = new_z.data
-#         new_z.requires_grad_(True)
-        
-#         E_new, grad_new = grad_energy(new_z, target, x=None)
-        
-#         energy_part = E - E_new
-        
-#         propose_vec_1 = z - new_z + grad_step*grad_new
-#         propose_vec_2 = new_z - z + grad_step*grad
-        
-#         propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
-#         propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
-        
-#         propose_part = propose_part_1 - propose_part_2
-
-#         if acceptance_rule == 'Hastings':
-#             log_accept_prob = propose_part + energy_part
-
-#         elif acceptance_rule == 'Barker':
-#             log_ratio = propose_part + energy_part
-#             log_accept_prob = -torch.log(1. + torch.exp(-log_ratio))
-
-#         generate_uniform_var = uniform.sample([batch_size]).to(z.device)
-#         log_generate_uniform_var = torch.log(generate_uniform_var)
-#         mask = log_generate_uniform_var < log_accept_prob
-        
-#         acceptence += mask
-#         with torch.no_grad():
-#             z[mask] = new_z[mask].detach().clone()
-#             z = z.data
-#             z.requires_grad_(True)
-#             z_sp.append(z.clone().detach())
-        
-#     return z_sp, acceptence
-
 
 mala_sampling = sampling_from_dynamics(mala_dynamics)
 
