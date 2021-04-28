@@ -209,7 +209,7 @@ class Cauchy_mixture(Target):
         
         return log_target + torch.tensor([8.]).log()
 
-    class Funnel(Target):
+class Funnel(Target):
     def __init__(self, kwargs):
         super().__init__(kwargs)
         self.a = 1.*torch.ones(1)

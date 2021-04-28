@@ -184,13 +184,17 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance
    batch_size, z_dim = z.shape[0], z.shape[1]
    device = z.device
 
+   # !!
+   std_norm = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(z_dim), torch.eye(z_dim))
+
    if adapt_stepsize:
        eps_scale = (2 * grad_step)**(1/2)
    uniform = Uniform(low = 0.0, high = 1.0)
    acceptence = torch.zeros(batch_size).to(device)
 
    for _ in range(n_steps):
-       eps = eps_scale * proposal.sample([batch_size])
+       eps = eps_scale * std_norm.sample([batch_size,])
+       #eps = eps_scale * proposal.sample([batch_size])
 
        E, grad = grad_energy(z, target, x=None)
        
@@ -205,8 +209,10 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, acceptance
        propose_vec_1 = z - new_z + grad_step*grad_new
        propose_vec_2 = new_z - z + grad_step*grad
        
-       propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
-       propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
+    #    propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
+    #    propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
+       propose_part_1 = std_norm.log_prob(propose_vec_1/eps_scale)
+       propose_part_2 = std_norm.log_prob(propose_vec_2/eps_scale)
        
        propose_part = propose_part_1 - propose_part_2
 
@@ -306,6 +312,9 @@ class MALATransition(object):
         dist_args.scale = scale
         self.stand_normal = IndependentNormal(dist_args)
 
+        self.adapt_grad_step = 0.
+        self.adapt_sigma = 0.
+
     @staticmethod
     def get_mh_kernel_log_prob(log_pi1, log_pi2, log_transition_forward, log_transition_backward):
         return (log_pi2 + log_transition_backward) - (log_pi1 + log_transition_forward)
@@ -324,13 +333,18 @@ class MALATransition(object):
         log_prob = self.get_mh_kernel_log_prob(-beta * energy, -beta * energy_new, log_transition_forward, log_transition_backward)
         return log_prob, energy_new, grad_new
 
-    def do_transition_step(self, z, z_new, energy, grad, grad_step, sigma, target=None, beta=1.0):
+    def do_transition_step(self, z, z_new, energy, grad, grad_step, sigma, target=None, beta=1.0, adapt_stepsize=False):
+        if adapt_stepsize is True:
+            if self.adapt_grad_step != 0 and self.adapt_sigma != 0:
+                grad_step = self.adapt_grad_step
+                sigma = self.adapt_sigma
+
         acc_log_prob, energy_new, grad_new = self.compute_log_probs(z, z_new, energy, grad, grad_step, sigma, target, beta)
         
         generate_uniform_var = self.uniform.sample([z.shape[0]]).to(z.device)
         log_generate_uniform_var = torch.log(generate_uniform_var)
         mask = log_generate_uniform_var < acc_log_prob
-        
+
         with torch.no_grad():
             z[mask] = z_new[mask].detach().clone()
             z = z.data
@@ -341,6 +355,11 @@ class MALATransition(object):
             
             grad[mask] = grad_new[mask]
             grad[~mask] = grad[~mask]
+
+        if adapt_stepsize:
+            mean_acceptance = mask.float().mean()
+            self.adapt_grad_step = heuristics_step_size(mean_acceptance, target_acceptance= 0.45, stepsize=grad_step)
+            self.adapt_sigma = (2 * self.adapt_grad_step)**.5
 
         return z, energy, grad, mask
 
