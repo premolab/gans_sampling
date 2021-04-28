@@ -86,36 +86,51 @@ def ex2_mcmc_mala(z,
                 noise_scale, 
                 corr_coef=0., 
                 bernoulli_prob_corr=0., 
-                flow=None):
+                flow=None,
+                adapt_stepsize=False):
     z_sp = [] ###vector of samples
     batch_size, z_dim = z.shape[0], z.shape[1]
 
     mala_transition = MALATransition(z_dim, z.device)
     bern = torch.distributions.Bernoulli(bernoulli_prob_corr)
 
-    for _ in range(n_steps):
-        if flow is not None:
-            z_pushed, _ = flow(z)
-            # for _ in range(K_mala):
-            #     z_pushed = mala_step(z_pushed)
-            #     z_sp.append(z_pushed)
-        else:
-            z_sp.append(z)
+    acceptance = torch.zeros(batch_size)
+
+    if flow is not None:
+        z, log_jac = flow(z)
+
+    for step_id in range(n_steps):
+        z_sp.append(z.detach().clone())
 
         if corr_coef == 0 and bernoulli_prob_corr == 0: # isir
             z_new = proposal.sample([batch_size, N - 1])
         else:
             # for simplicity assume proposal is N(0, \sigma^2 Id), need to be updated
             correlation = corr_coef * bern.sample((batch_size,))
-            latent_var = correlation[:, None] * z + (1. - correlation[:, None]**2) * proposal.sample((batch_size,)) #torch.randn((batch_size, z_dim))
+            if flow is not None:
+                z_backward_pushed, _ = flow.inverse(z)
+            else:
+                z_backward_pushed = z
+
+            latent_var = correlation[:, None] * z_backward_pushed + (1. - correlation[:, None]**2)**.5 * proposal.sample((batch_size,)) #torch.randn((batch_size, z_dim))
             correlation_new = corr_coef * bern.sample((batch_size, N - 1))
             z_new = correlation_new[..., None] * latent_var[:, None, :] + (1. - correlation_new[..., None]**2)**.5 * proposal.sample((batch_size, N - 1,)) #torch.randn((batch_size, N - 1, z_dim))
         
+        if flow is not None:
+            z_new, log_jac_new = flow(z_new.view(batch_size * (N - 1), -1))
+            z_new = z_new.view(batch_size, N - 1, -1)
+            log_jacs  = torch.cat([log_jac[:, None], log_jac_new.view(batch_size, N - 1)], 1)
+        else:
+            log_jacs = torch.zeros(batch_size, N)
+                
         X = torch.cat([z.unsqueeze(1), z_new], 1)
         X_view = X.view(-1, z_dim)
 
-        log_weight = target(X_view) -  proposal.log_prob(X_view) #regular_sir_log_weights(X, target, proposal)
+        log_weight = target(X_view) -  proposal.log_prob(X_view)
         log_weight = log_weight.view(batch_size, N)
+        if flow is not None:
+            log_weight += log_jacs
+        
         max_logs = torch.max(log_weight, dim = 1)[0][:, None]
         log_weight = log_weight - max_logs
         weight = torch.exp(log_weight)
@@ -129,18 +144,22 @@ def ex2_mcmc_mala(z,
         z = X[np.arange(batch_size), indices, :]
         z = z.data
 
+        if flow is not None:
+           log_jac = log_jacs[np.arange(batch_size), indices]
+
         # mala transition
         E, grad = grad_energy(z, target)
-        z_new = z - grad_step * grad + noise_scale * proposal.sample([batch_size])
-        z, _, _, mask = mala_transition.do_transition_step(z, z_new, E, grad, grad_step, noise_scale, target)
+        if adapt_stepsize and step_id > 0:
+            z_new = z - mala_transition.adapt_grad_step * grad + mala_transition.adapt_sigma * torch.randn([batch_size, z_dim])
+        else:
+            z_new = z - grad_step * grad + noise_scale * torch.randn([batch_size, z_dim])
+        z, _, _, mask = mala_transition.do_transition_step(z, z_new, E, grad, grad_step, noise_scale, target, adapt_stepsize=adapt_stepsize)
+        acceptance += mask.float()
 
-    if flow is not None:
-        z_pushed, _ = flow(z)
-        z_sp.append(z_pushed)
-    else:
-        z_sp.append(z)
+    z_sp.append(z.detach().clone())
+    acceptance /= n_steps
 
-    return z_sp
+    return z_sp, acceptance
 
 
 
