@@ -150,3 +150,97 @@ def init_independent_normal_scale(scales, locs, device):
     target_args.scale = scales.to(device)
     target = IndependentNormal(target_args)
     return target
+
+
+
+class Cauchy(Target):
+    
+    def __init__(self, kwargs):
+        
+        super().__init__(kwargs)
+        self.device = kwargs.device
+        self.torchType = torchType
+        self.loc  = kwargs['loc']
+        self.scale = kwargs['scale']
+        self.dim   = kwargs['dim']
+        self.distr = torch.distributions.Cauchy(self.loc, self.scale)
+        
+    def __call__(self,x):
+        
+        return self
+        
+    def get_density(self,x):
+        
+        return self.log_prob(x).exp()
+    
+    def log_prob(self, z, x = None):
+        
+        log_target = torch.sum(self.distr.log_prob(z), -1)
+        
+        return log_target
+    
+    def sample(self, n = (1,)):
+        
+        return self.distr.sample((n[0], self.dim))
+    
+    
+class Cauchy_mixture(Target):
+    
+    def __init__(self, kwargs):
+        
+        super().__init__(kwargs)
+        self.device = kwargs.device
+        self.torchType = torchType
+        self.mu  = kwargs['mu']
+        self.cov = kwargs['cov']
+        
+    def get_density(self,x):
+        
+        return self.log_prob(x).exp()
+    
+    def log_prob(self, z, x = None):
+
+        cauchy = Cauchy(self.mu, self.cov)
+        cauchy_minus = Cauchy(-self.mu, self.cov)
+
+        catted = torch.cat([cauchy.log_prob(z)[None,...],cauchy_minus.log_prob(z)[None,...]],0)
+
+        log_target = torch.sum(torch.logsumexp(catted, 0) - torch.tensor(2.).log(),-1)
+        
+        return log_target + torch.tensor([8.]).log()
+
+    class Funnel(Target):
+    def __init__(self, kwargs):
+        super().__init__(kwargs)
+        self.a = 1.*torch.ones(1)
+        self.b = .5
+        self.dim = 16
+        self.distr1 = torch.distributions.Normal(torch.zeros(1), self.a)
+        #self.distr2 = lambda z1: torch.distributions.MultivariateNormal(torch.zeros(self.dim-1), (2*self.b*z1).exp()*torch.eye(self.dim-1))
+        self.distr2 = lambda z1: -(z[...,1:]**2).sum(-1) * (-2*self.b*z1).exp() - np.log(self.dim) + 2*self.b*z1 
+        
+    def log_prob(self, z, x=None):
+        #pdb.set_trace()
+        logprob1 = self.distr1.log_prob(z[...,0])
+        z1 = z[..., 0]
+        #logprob2 = self.distr2(z[...,0])
+        logprob2 = -(z[...,1:]**2).sum(-1) * (-2*self.b*z1).exp() - np.log(self.dim) + 2*self.b*z1 
+        return logprob1+logprob2
+    
+    
+    
+class Banana_32(Target):
+    def __init__(self, kwargs):
+        super().__init__(kwargs)
+        self.Q = .01*torch.ones(1)
+        self.dim = 32
+        
+        
+        
+    def log_prob(self, z, x=None):
+        n = self.dim/2
+        even = np.arange(0, self.dim, 2)
+        odd = np.arange(1, self.dim, 2)
+        
+        ll = - (z[..., even] - z[..., odd]**2)**2/self.Q - (z[..., odd]-1)**2   
+        return ll.sum(-1)
