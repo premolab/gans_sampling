@@ -108,7 +108,8 @@ def ex2_mcmc_mala(z,
             # for simplicity assume proposal is N(0, \sigma^2 Id), need to be updated
             correlation = corr_coef * bern.sample((batch_size,))
             if flow is not None:
-                z_backward_pushed, _ = flow.inverse(z)
+                z_backward_pushed, log_jac_minus = flow.inverse(z)
+                log_jac = -log_jac_minus
             else:
                 z_backward_pushed = z
 
