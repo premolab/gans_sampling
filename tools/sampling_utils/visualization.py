@@ -27,6 +27,7 @@ def sample_fake_data(generator, X_train,
                      epoch = None,
                      scaler = None, 
                      batch_size_sample = 5000,
+                     path_to_final_save = None,
                      path_to_save_remote = None,
                      port_to_remote = None):
     fake_data = generator.sampling(batch_size_sample).data.cpu().numpy()
@@ -36,12 +37,14 @@ def sample_fake_data(generator, X_train,
     plt.xlim(-x_range, x_range)
     plt.ylim(-y_range, y_range)
     plt.title("Training and generated samples", fontsize=20)
-    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.5, color='gray', 
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.3, color='gray', 
                 marker='o', label = 'training samples')
-    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.5, color='blue', 
+    plt.scatter(fake_data[:,:1], fake_data[:,1:], alpha=0.3, color='blue', 
                 marker='o', label = 'samples by G')
     plt.legend()
     plt.grid(True)
+    plt.xlabel(r"$x_{1}$")
+    plt.ylabel(r"$x_{2}$")
     if path_to_save is not None:
        cur_time = datetime.datetime.now().strftime('%Y_%m_%d-%H_%M_%S')
        if epoch is not None:
@@ -49,7 +52,10 @@ def sample_fake_data(generator, X_train,
        else:
           plot_name = cur_time + f'_gan_sampling.pdf'
 
-       path_to_plot = os.path.join(path_to_save, plot_name)
+       if path_to_final_save is not None:
+          path_to_plot = path_to_final_save
+       else:
+          path_to_plot = os.path.join(path_to_save, plot_name)
        plt.savefig(path_to_plot)
        send_file_to_remote(path_to_plot,
                            port_to_remote, 
@@ -80,6 +86,8 @@ def plot_fake_data_mode(fake, X_train, mode,
                 marker='o', label = label)
     plt.legend()
     plt.grid(True)
+    plt.xlabel(r"$x_{1}$")
+    plt.ylabel(r"$x_{2}$")
     if path_to_save is not None:
        plt.savefig(path_to_save)
        send_file_to_remote(path_to_save,
@@ -88,6 +96,32 @@ def plot_fake_data_mode(fake, X_train, mode,
        plt.close()
     else:
        plt.show()
+
+def plot_real_data(X_train, 
+                   title,
+                   path_to_save = None, 
+                   path_to_save_remote = None,
+                   port_to_remote = None):
+    plt.figure(figsize=figsize)
+    plt.xlim(-3., 3.)
+    plt.ylim(-3., 3.)
+    plt.title(title, fontsize=20)
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.3, color='gray', 
+                marker='o', label = 'training samples')
+    plt.legend()
+    plt.grid(True)
+    plt.xlabel(r"$x_{1}$")
+    plt.ylabel(r"$x_{2}$")
+    if path_to_save is not None:
+       plt.savefig(path_to_save)
+       send_file_to_remote(path_to_save,
+                           port_to_remote, 
+                           path_to_save_remote)
+       plt.show()
+       plt.close()
+    else:
+       plt.show()
+                   
 
 def plot_fake_data_projection(fake, X_train, 
                               proj_1, proj_2, 
@@ -172,6 +206,8 @@ def plot_discriminator_2d(discriminator,
     axes.set_title(title)
     axes.axis([l_x, r_x, l_y, r_y])
     figure.colorbar(z)
+    axes.set_xlabel(r"$x_{1}$")
+    axes.set_ylabel(r"$x_{2}$")
     if path_to_save is not None:
        figure.savefig(path_to_save)
        send_file_to_remote(path_to_save,
@@ -185,8 +221,9 @@ def plot_potential_energy(target_energy,
                           device,
                           path_to_save = None,
                           norm_grads = False,
-                          normalize_to_0_1 = True,
-                          num_points = 100):
+                          num_points = 100,
+                          mode_visual = 'image',
+                          title = None):
     x = torch.linspace(-x_range, x_range, num_points)
     y = torch.linspace(-y_range, y_range, num_points)
     x_t = x.view(-1, 1).repeat(1, y.size(0))
@@ -207,12 +244,14 @@ def plot_potential_energy(target_energy,
         batch_grads_norm = torch.norm(batch_grads, p=2, dim=-1)
         result = batch_grads_norm.view((num_points, 
                                         num_points)).detach().cpu().numpy()
-        title = f"Latent energy norm gradients"
+        if title is None:
+            title = "Latent energy norm gradients"
     else:
         batch_energy = target_energy(batch)
         result = batch_energy.view((num_points, 
                                     num_points)).detach().cpu().numpy()
-        title = "Latent energy"
+        if title is None:
+            title = "Latent energy"
     
     x_numpy = x.numpy()
     y_numpy = y.numpy()
@@ -226,6 +265,12 @@ def plot_potential_energy(target_energy,
     z = axes.contourf(x, y, result, 10, cmap='viridis')
     axes.set_title(title)
     axes.axis([l_x, r_x, l_y, r_y])
+    if mode_visual == 'image':
+       axes.set_xlabel(r"$x_{1}$")
+       axes.set_ylabel(r"$x_{2}$")
+    elif mode_visual == 'latent':
+       axes.set_xlabel(r"$z_{1}$")
+       axes.set_ylabel(r"$z_{2}$")
     figure.colorbar(z)
     if path_to_save is not None:
         plt.savefig(path_to_save)
@@ -246,7 +291,9 @@ def langevin_sampling_plot_2d(target,
                               n_batches = 1,
                               latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_langevin, zs = langevin_sampling(target, proposal, batchsize, batch_size_sample, n_steps, grad_step, eps_scale)
+    X_langevin, zs = langevin_sampling(target, proposal, batchsize, batch_size_sample, 
+                                       None, None, None, None, 
+                                       n_steps, grad_step, eps_scale)
     if latent_transform is not None:
         X_langevin = torch.FloatTensor(X_langevin).to(proposal.device)
         X_langevin = latent_transform(X_langevin).data.cpu().numpy()
@@ -274,7 +321,9 @@ def mala_sampling_plot_2d(target,
                           acceptance_rule = 'Hastings',
                           latent_transform = None):
     batchsize = batch_size_sample // n_batches
-    X_mala, zs = mala_sampling(target, proposal, batchsize, batch_size_sample, n_steps, grad_step, eps_scale, acceptance_rule)
+    X_mala, zs = mala_sampling(target, proposal, batchsize, batch_size_sample, 
+                               None, None, None, None,
+                               n_steps, grad_step, eps_scale, acceptance_rule)
     if latent_transform is not None:
         X_mala = torch.FloatTensor(X_mala).to(proposal.device)
         X_mala = latent_transform(X_mala).data.cpu().numpy()
