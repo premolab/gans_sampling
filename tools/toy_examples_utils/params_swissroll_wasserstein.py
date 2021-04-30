@@ -3,8 +3,7 @@ import torch
 random_seed = 42
 
 train_dataset_size = 64000
-batch_size = 256           
-sigma = 0.05
+batch_size = 256    
 
 n_dim = 2
 n_layers_d = 3
