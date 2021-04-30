@@ -83,7 +83,7 @@ def ex2_mcmc_mala(z,
                 n_steps, 
                 N,
                 grad_step,
-                noise_scale, 
+                noise_scale, mala_steps = 5,
                 corr_coef=0., 
                 bernoulli_prob_corr=0., 
                 flow=None,
@@ -145,18 +145,19 @@ def ex2_mcmc_mala(z,
         z = X[np.arange(batch_size), indices, :]
         z = z.data
 
-        if flow is not None:
-           log_jac = log_jacs[np.arange(batch_size), indices]
+        #if flow is not None:
+        #    log_jac = log_jacs[np.arange(batch_size), indices]
 
         # mala transition
-        E, grad = grad_energy(z, target)
-        if adapt_stepsize and step_id > 0:
-            z_new = z - mala_transition.adapt_grad_step * grad + mala_transition.adapt_sigma * torch.randn([batch_size, z_dim])
-        else:
-            z_new = z - grad_step * grad + noise_scale * torch.randn([batch_size, z_dim])
-        z, _, _, mask = mala_transition.do_transition_step(z, z_new, E, grad, grad_step, noise_scale, target, adapt_stepsize=adapt_stepsize)
-        acceptance += mask.float()
-
+        for _ in range(mala_steps):
+            E, grad = grad_energy(z, target)
+            if adapt_stepsize and step_id > 0:
+                z_new = z - mala_transition.adapt_grad_step * grad + mala_transition.adapt_sigma * torch.randn([batch_size, z_dim])
+            else:
+                z_new = z - grad_step * grad + noise_scale * torch.randn([batch_size, z_dim])
+            z, _, _, mask = mala_transition.do_transition_step(z, z_new, E, grad, grad_step, noise_scale, target, adapt_stepsize=adapt_stepsize)
+            acceptance += mask.float()
+        acceptance /= mala_steps
     z_sp.append(z.detach().clone())
     acceptance /= n_steps
 
