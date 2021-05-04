@@ -3,6 +3,8 @@ import torch, torch.nn as nn
 import torch.nn.functional as F
 
 from general_utils import DotDict
+from logistic_regression import import_covertype
+
 
 torchType = torch.float32
 class Target(nn.Module):
@@ -214,7 +216,7 @@ class Funnel(Target):
     def __init__(self, kwargs):
         super().__init__(kwargs)
         self.a = kwargs.get('a', 1.) * torch.ones(1)
-        self.b = kwargs.get('a', .5)
+        self.b = kwargs.get('b', .5)
         self.dim = kwargs.get('dim', 16)
         self.distr1 = torch.distributions.Normal(torch.zeros(1), self.a)
         #self.distr2 = lambda z1: torch.distributions.MultivariateNormal(torch.zeros(self.dim-1), (2*self.b*z1).exp()*torch.eye(self.dim-1))
@@ -243,3 +245,40 @@ class Banana(Target):
         
         ll = - (z[..., even] - z[..., odd]**2)**2/self.Q - (z[..., odd]-1)**2   
         return ll.sum(-1)
+
+    
+    
+class covtype_logistic_regression(Target):
+    def __init__(self, kwargs):
+        super().__init__(kwargs)
+        self.c1 = kwargs.get('c1', 1)
+        self.c2 = kwargs.get('c2', 2)
+        self.n_data = kwargs.get('n_data', 50000)
+        x1_train, x1_test, y1_train, y1_test = import_covertype(self.c1, 
+                                                                self.c2, 
+                                                                self.n_data)
+        self.x_train = torch.tensor(x1_train, dtype=self.torchType, device=self.device)
+        self.x_test =  torch.tensor(x1_test , dtype=self.torchType, device=self.device)
+        self.y_train = torch.tensor(y1_train, dtype=self.torchType, device=self.device)
+        self.y_test =  torch.tensor(y1_test , dtype=self.torchType, device=self.device)
+        self.d = np.size(x1_train,1)
+        self.n = np.size(y1_train)
+        self.tau = kwargs.get('tau', 1)
+        
+        
+    def log_prob(self, theta, x= None, y = None):
+        if x is None:
+            x = self.x_train
+        if y is None:
+            y = self.y_train
+        P = 1. / (1. + torch.exp(-torch.mm(x,theta)))
+        ll =  torch.mm(y,torch.log(P)) + torch.mm(1-y,np.log(1-P)) - self.tau/2 * (theta**2).sum(-1)
+        return ll
+        
+    def grad_log_prob(self, theta, x= None, y = None):
+        if x is None:
+            x = self.x_train
+        if y is None:
+            y = self.y_train
+        P = 1. / (1. + torch.exp(-torch.mm(x,theta)))
+        return torch.mm(torch.transpose(X, -2, -1), (y - P).view(self.n)) - self.tau * theta

@@ -28,9 +28,9 @@ from flows import RNVP
 
 
 
-def get_optimizer(parameters, optimizer = "Adam", lr = 1e-3):
+def get_optimizer(parameters, optimizer = "Adam", lr = 1e-3, weight_decay=1e-5):
     if optimizer == "Adam":
-        return torch.optim.Adam(parameters, lr=lr)
+        return torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay)
     else:
         raise NotImplementedError
 
