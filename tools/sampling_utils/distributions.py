@@ -209,15 +209,16 @@ class Cauchy_mixture(Target):
         
         return log_target + torch.tensor([8.]).log()
 
+
 class Funnel(Target):
     def __init__(self, kwargs):
         super().__init__(kwargs)
-        self.a = 1.*torch.ones(1)
-        self.b = .5
-        self.dim = 16
+        self.a = kwargs.get('a', 1.) * torch.ones(1)
+        self.b = kwargs.get('a', .5)
+        self.dim = kwargs.get('dim', 16)
         self.distr1 = torch.distributions.Normal(torch.zeros(1), self.a)
         #self.distr2 = lambda z1: torch.distributions.MultivariateNormal(torch.zeros(self.dim-1), (2*self.b*z1).exp()*torch.eye(self.dim-1))
-        self.distr2 = lambda z1: -(z[...,1:]**2).sum(-1) * (-2*self.b*z1).exp() - np.log(self.dim) + 2*self.b*z1 
+        #self.distr2 = lambda z1: -(z[...,1:]**2).sum(-1) * (-2*self.b*z1).exp() - np.log(self.dim) + 2*self.b*z1 
         
     def log_prob(self, z, x=None):
         #pdb.set_trace()
@@ -228,17 +229,15 @@ class Funnel(Target):
         return logprob1+logprob2
     
     
-    
-class Banana_32(Target):
+class Banana(Target):
     def __init__(self, kwargs):
         super().__init__(kwargs)
-        self.Q = .01*torch.ones(1)
-        self.dim = 32
-        
-        
+        self.Q = kwargs.get('Q', .01) * torch.ones(1)
+        self.dim = kwargs.get('dim', 32)
+        #assert self.dim % 2 == 0, 'Dimension should be divisible by 2'
         
     def log_prob(self, z, x=None):
-        n = self.dim/2
+        #n = self.dim/2
         even = np.arange(0, self.dim, 2)
         odd = np.arange(1, self.dim, 2)
         
