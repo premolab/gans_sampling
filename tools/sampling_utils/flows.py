@@ -79,7 +79,7 @@ class ConditionalDenseNN(torch.nn.Module):
 
     def init_params(self, params):
         #torch.nn.init.xavier_uniform_(params, gain=nn.init.calculate_gain('relu'))
-        torch.nn.init.sparse_(params, sparsity=0.1)
+        torch.nn.init.sparse_(params, sparsity=0.1, std = 1e-2)
         
     def _forward(self, x):
         """
