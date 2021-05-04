@@ -28,7 +28,6 @@ params_module = importlib.import_module(module_name)
 random_seed = params_module.random_seed
 batch_size = params_module.batch_size
 train_dataset_size = params_module.train_dataset_size
-sigma = params_module.sigma
 n_dim = params_module.n_dim
 n_layers_d = params_module.n_layers_d
 n_layers_g = params_module.n_layers_g
