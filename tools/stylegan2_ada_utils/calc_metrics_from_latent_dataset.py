@@ -9,6 +9,8 @@ import uuid
 import pickle
 import torch
 import numpy as np
+import copy
+import random
 
 _feature_detector_cache = dict()
 
@@ -207,20 +209,44 @@ def compute_feature_stats_for_generator(opts, detector_url,
                                     num_gpus=opts.num_gpus, rank=opts.rank, verbose=progress.verbose)
     
     # Main loop.
+    num_imgs = 0
     while not stats.is_full():
         images = []
         for _i in range(batch_size // batch_gen):
             z = torch.randn([batch_gen, G.z_dim], device=opts.device)
+            #print(f"z shape = {z.shape}")
             c = [dataset.get_label(np.random.randint(len(dataset))) for _i in range(batch_gen)]
             c = torch.from_numpy(np.stack(c)).pin_memory().to(opts.device)
             images.append(run_generator(z, c))
         images = torch.cat(images)
+        num_imgs += images.shape[0]
         if images.shape[1] == 1:
             images = images.repeat([1, 3, 1, 1])
         features = detector(images, **detector_kwargs)
         stats.append_torch(features, num_gpus=opts.num_gpus, rank=opts.rank)
         progress.update(stats.num_items)
+        
+    #print(f"num imgs = {num_imgs}")
     return stats
+
+def compute_mean_cov(x_arr):
+    num_features = x_arr[0].shape[1]
+    raw_mean = np.zeros([num_features], dtype=np.float64)
+    raw_cov = np.zeros([num_features, num_features], dtype=np.float64)
+    num_items = 0    
+
+    for x in x_arr:
+        num_items += x.shape[0]
+        x64 = x.astype(np.float64)
+        raw_mean += x64.sum(axis=0)
+        raw_cov += x64.T @ x64
+
+    #print(f"len of split = {len(x_arr)}")
+    #print(f"num_items = {num_items}")   
+    mean = raw_mean / num_items
+    cov = raw_cov / num_items
+    cov = cov - np.outer(mean, mean)
+    return mean, cov
 
 def compute_feature_stats_for_latent_dataset(opts, detector_url, 
                                         detector_kwargs, 
@@ -250,19 +276,22 @@ def compute_feature_stats_for_latent_dataset(opts, detector_url,
     # Initialize.
     stats = FeatureStats(**stats_kwargs)
     assert stats.max_items is not None
-    progress = opts.progress.sub(tag='generator features', num_items=stats.max_items, 
+    progress = opts.progress.sub(tag='latent dataset features', num_items=stats.max_items, 
                                  rel_lo=rel_lo, rel_hi=rel_hi)
     detector = get_feature_detector(url=detector_url, device=opts.device,
                                     num_gpus=opts.num_gpus, rank=opts.rank, verbose=progress.verbose)
     
     # Main loop.
+    index_latent = 0
     while not stats.is_full():
         images = []
         for _i in range(batch_size // batch_gen):
-            z = latent_dataset[(_i*batch_gen):((_i + 1)*batch_gen)].to(opts.device)
+            z = latent_dataset[(index_latent*batch_gen):((index_latent + 1)*batch_gen)].to(opts.device)
+            #print(f"z shape = {z.shape}")
             c = [dataset.get_label(np.random.randint(len(dataset))) for _i in range(batch_gen)]
             c = torch.from_numpy(np.stack(c)).pin_memory().to(opts.device)
             images.append(run_generator(z, c))
+            index_latent += 1
         images = torch.cat(images)
         if images.shape[1] == 1:
             images = images.repeat([1, 3, 1, 1])
@@ -312,11 +341,59 @@ def compute_is(opts, num_gen, num_splits):
         scores.append(np.exp(kl))
     return float(np.mean(scores)), float(np.std(scores))
 
-def compute_fid_for_latent_dataset(opts, max_real, num_gen, latent_dataset):
+def calculate_activation_statistics(act):
+    mu = np.mean(act, axis=0)
+    sigma = np.cov(act, rowvar=False)
+    return mu, sigma
+
+def compute_fid_for_latent_dataset(opts, max_real, num_gen, num_splits, latent_dataset):
     # Direct TorchScript translation of http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz
     detector_url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/inception-2015-12-05.pt'
     detector_kwargs = dict(return_features=True) # Return raw features before the softmax layer.
+    
+    data_loader_kwargs = dict(pin_memory=True, prefetch_factor=2)
 
+    dataset_features = compute_feature_stats_for_dataset(
+        opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
+        rel_lo=0, rel_hi=0, capture_all=True,
+        data_loader_kwargs = data_loader_kwargs, 
+        max_items=max_real).get_all()
+    
+    latent_dataset_features = compute_feature_stats_for_latent_dataset(
+        opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
+        latent_dataset = latent_dataset,
+        rel_lo=0, rel_hi=1, capture_all=True, max_items=num_gen).get_all()
+
+    if opts.rank != 0:
+        return float('nan')
+
+    #print(f"num samples = {num_samples}")
+
+    scores = []
+    for i in range(num_splits):
+        print(f"split = {i}")
+        rng1 = np.random.default_rng(i)
+        rng2 = np.random.default_rng(i+num_splits)
+        act1_bs = dataset_features[rng1.permutation(dataset_features.shape[0])]
+        act2_bs = latent_dataset_features[rng2.permutation(latent_dataset_features.shape[0])]
+
+        mu_real_split, sigma_real_split = calculate_activation_statistics(act1_bs)
+        mu_gen_split, sigma_gen_split = calculate_activation_statistics(act2_bs)
+
+        m = np.square(mu_gen_split - mu_real_split).sum()
+        s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen_split, sigma_real_split), disp=False) # pylint: disable=no-member
+        fid = np.real(m + np.trace(sigma_gen_split + sigma_real_split - s * 2))
+        scores.append(float(fid))
+    scores = np.array(scores)
+    #print(f"scores = {scores}")
+
+    return float(np.mean(scores)), float(np.std(scores))
+
+def compute_fid_for_latent_dataset_no_std(opts, max_real, num_gen, latent_dataset):
+    # Direct TorchScript translation of http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz
+    detector_url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/inception-2015-12-05.pt'
+    detector_kwargs = dict(return_features=True) # Return raw features before the softmax layer.
+    
     mu_real, sigma_real = compute_feature_stats_for_dataset(
         opts=opts, detector_url=detector_url, detector_kwargs=detector_kwargs,
         rel_lo=0, rel_hi=0, capture_mean_cov=True, max_items=max_real).get_mean_cov()
@@ -332,9 +409,10 @@ def compute_fid_for_latent_dataset(opts, max_real, num_gen, latent_dataset):
     m = np.square(mu_gen - mu_real).sum()
     s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen, sigma_real), disp=False) # pylint: disable=no-member
     fid = np.real(m + np.trace(sigma_gen + sigma_real - s * 2))
-    return float(fid)
+    
+    return float(fid)    
 
-def compute_fid(opts, max_real, num_gen):
+def compute_fid(opts, max_real, num_gen, num_splits):
     # Direct TorchScript translation of http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz
     detector_url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/inception-2015-12-05.pt'
     detector_kwargs = dict(return_features=True) # Return raw features before the softmax layer.
@@ -350,21 +428,38 @@ def compute_fid(opts, max_real, num_gen):
     if opts.rank != 0:
         return float('nan')
 
-    m = np.square(mu_gen - mu_real).sum()
-    s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen, sigma_real), disp=False) # pylint: disable=no-member
-    fid = np.real(m + np.trace(sigma_gen + sigma_real - s * 2))
-    return float(fid)
+    num_samples = min(mu_real.shape[0], mu_gen.shape[0])
+    scores = []
+    for i in range(num_splits):
+        mu_real_split = mu_real[i * num_samples // num_splits : (i + 1) * num_samples // num_splits]
+        sigma_real_split = sigma_real[i * num_samples // num_splits : (i + 1) * num_samples // num_splits]
+        mu_gen_split = mu_gen[i * num_samples // num_splits : (i + 1) * num_samples // num_splits]
+        sigma_gen_split = sigma_gen[i * num_samples // num_splits : (i + 1) * num_samples // num_splits]
+        m = np.square(mu_gen_split - mu_real_split).sum()
+        s, _ = scipy.linalg.sqrtm(np.dot(sigma_gen_split, sigma_real_split), disp=False) # pylint: disable=no-member
+        fid = np.real(m + np.trace(sigma_gen_split + sigma_real_split - s * 2))
+        scores.append(float(fid))
+    scores = np.array(scores)
+
+    return float(np.mean(scores)), float(np.std(scores))
 
 def fid50k_full(opts):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
-    fid = compute_fid(opts, max_real=None, num_gen=50000)
-    return dict(fid50k_full=fid)
+    mean, std = compute_fid(opts, max_real=None, num_gen=50000, num_splits=10)
+    return dict(fid50k_mean=mean, fid50k_std=std)
 
 def fid50k_full_for_latent_dataset(opts, latent_dataset):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
-    fid = compute_fid_for_latent_dataset(opts, max_real=None, num_gen=50000,
-                                        latent_dataset = latent_dataset)
-    return dict(fid50k_full=fid)
+    mean, std = compute_fid_for_latent_dataset(opts, max_real=None, num_gen=50000,
+                                               num_splits = 10,
+                                               latent_dataset = latent_dataset)
+    return dict(fid50k_latent_mean=mean, fid50k_latent_std=std)
+
+def fid50k_full_for_latent_dataset_no_std(opts, latent_dataset):
+    opts.dataset_kwargs.update(max_size=None, xflip=False)
+    mean = compute_fid_for_latent_dataset_no_std(opts, max_real=None, num_gen=50000,
+                                               latent_dataset = latent_dataset)
+    return dict(fid50k_latent_mean=mean)
 
 def is50k(opts):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
@@ -375,9 +470,7 @@ def is50k_for_latent_dataset(opts, latent_dataset):
     opts.dataset_kwargs.update(max_size=None, xflip=False)
     mean, std = compute_is_for_latent_dataset(opts, num_gen=50000, num_splits=10, 
                                               latent_dataset = latent_dataset)
-    return dict(is50k_mean=mean, is50k_std=std)
-
-
+    return dict(is50k_latent_mean=mean, is50k_latent_std=std)
 
 def calc_metric(metric, **kwargs): # See metric_utils.MetricOptions for the full list of arguments.
     opts = MetricOptions(**kwargs)
@@ -394,6 +487,9 @@ def calc_metric(metric, **kwargs): # See metric_utils.MetricOptions for the full
         results = is50k_for_latent_dataset(opts, opts.latent_dataset)
     elif metric == 'fid50k_full_for_latent_dataset':
         results = fid50k_full_for_latent_dataset(opts, opts.latent_dataset)
+    elif metric == 'fid50k_full_for_latent_dataset_no_std':
+        results = fid50k_full_for_latent_dataset_no_std(opts, opts.latent_dataset)
+
     total_time = time.time() - start_time
 
     # Broadcast results.
@@ -407,3 +503,70 @@ def calc_metric(metric, **kwargs): # See metric_utils.MetricOptions for the full
         total_time      = total_time,
         total_time_str  = dnnlib.util.format_time(total_time),
     )
+
+def delete_nan_samples(z):
+   return z[~np.isnan(z).any(axis=1)]
+
+def pipeline_for_latent_dataset(G, device, data, load_batches, path_to_save_cifar10_np, method_name, every_step):
+    metrics = ['is50k_for_latent_dataset', 'fid50k_full_for_latent_dataset']
+    network_pkl = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/cifar10.pkl'
+    gpus = 1
+    verbose = True
+    args = dnnlib.EasyDict(metrics=metrics, num_gpus=gpus, network_pkl=network_pkl, verbose=verbose)
+    args.G = G
+    args.dataset_kwargs = dnnlib.EasyDict(class_name='training.dataset.ImageFolderDataset', path=data)
+    args.dataset_kwargs.resolution = args.G.img_resolution
+    args.dataset_kwargs.use_labels = (args.G.c_dim != 0)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    G = copy.deepcopy(args.G).eval().requires_grad_(False).to(device)
+
+    names_list = ["inception_scores_mean", "inception_scores_std", 
+                 "fid_scores_mean_train", "fid_scores_std_train"]
+
+    inception_scores_mean = []
+    inception_scores_std = []
+    fid_scores_mean_train = []
+    fid_scores_std_train = []
+
+    rank = 0
+
+    for i in range(len(load_batches)):
+        print("------------------------------------")
+        print(f"step = {i*every_step}")
+        all_dicts = {}
+
+        current_samples = load_batches[i]
+        print(f"sample size = {current_samples.shape}")
+        no_nans_samples = delete_nan_samples(current_samples)   
+        print(f"sample size after deleteting nans = {no_nans_samples.shape}")
+        latent_arr = torch.FloatTensor(no_nans_samples)
+
+        for metric in args.metrics:
+            print(f'Calculating {metric}...')
+            progress = metric_utils.ProgressMonitor(verbose=args.verbose)
+            result_dict = calc_metric(metric=metric, G=G, dataset_kwargs=args.dataset_kwargs,
+                                      num_gpus=args.num_gpus, rank=rank, device=device, progress=progress,
+                                      latent_dataset = latent_arr)
+            all_dicts[metric] = result_dict
+
+        inception_scores_mean.append(all_dicts['is50k_for_latent_dataset']['results']['is50k_latent_mean'])
+        inception_scores_std.append(all_dicts['is50k_for_latent_dataset']['results']['is50k_latent_std'])
+        fid_scores_mean_train.append(all_dicts['fid50k_full_for_latent_dataset']['results']['fid50k_latent_mean'])
+        fid_scores_std_train.append(all_dicts['fid50k_full_for_latent_dataset']['results']['fid50k_latent_std'])
+
+        print(f"{method_name} mean inception score = {inception_scores_mean[i]}, std inception score = {inception_scores_std[i]}")
+        print(f"FID score for train CIFAR10 with {method_name}: mean {fid_scores_mean_train[i]}, score {fid_scores_std_train[i]}")
+
+    arrays_list = [inception_scores_mean, inception_scores_std,
+                  fid_scores_mean_train, fid_scores_std_train]
+
+    dict_results = {}
+    for i in range(len(names_list)):
+      cur_score_path = os.path.join(path_to_save_cifar10_np,
+                                    f"{method_name}_{names_list[i]}.npy")
+      np.save(cur_score_path, np.array(arrays_list[i]))
+      dict_results[names_list[i]] = np.array(arrays_list[i])
+
+    return dict_results
