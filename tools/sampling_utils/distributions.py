@@ -248,12 +248,12 @@ class Banana(Target):
 
     
     
-class covtype_logistic_regression(Target):
+class Covtype_logistic_regression(Target):
     def __init__(self, kwargs):
         super().__init__(kwargs)
         self.c1 = kwargs.get('c1', 1)
         self.c2 = kwargs.get('c2', 2)
-        self.n_data = kwargs.get('n_data', 50000)
+        self.n_data = kwargs.get('n_data', 500000)
         x1_train, x1_test, y1_train, y1_test = import_covertype(self.c1, 
                                                                 self.c2, 
                                                                 self.n_data)
@@ -271,8 +271,8 @@ class covtype_logistic_regression(Target):
             x = self.x_train
         if y is None:
             y = self.y_train
-        P = 1. / (1. + torch.exp(-torch.mm(x,theta)))
-        ll =  torch.mm(y,torch.log(P)) + torch.mm(1-y,np.log(1-P)) - self.tau/2 * (theta**2).sum(-1)
+        P = 1. / (1. + torch.exp(-torch.matmul(x,theta.transpose(0,1))))
+        ll =  torch.matmul(y,torch.log(P)) + torch.matmul(1-y,torch.log(1-P)) - self.tau/2 * (theta**2).sum(-1)
         return ll
         
     def grad_log_prob(self, theta, x= None, y = None):
@@ -281,4 +281,4 @@ class covtype_logistic_regression(Target):
         if y is None:
             y = self.y_train
         P = 1. / (1. + torch.exp(-torch.mm(x,theta)))
-        return torch.mm(torch.transpose(X, -2, -1), (y - P).view(self.n)) - self.tau * theta
+        return torch.matmul(torch.transpose(X, -2, -1), (y - P).view(self.n)) - self.tau * theta
