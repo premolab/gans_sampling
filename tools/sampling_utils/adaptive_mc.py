@@ -100,7 +100,7 @@ def ex2_mcmc_mala(z,
     if flow is not None:
         z, log_jac = flow(z)
 
-    for step_id in range(n_steps):
+    for step_id in tqdm(range(n_steps)):
         z_sp.append(z.detach().clone())
 
         if corr_coef == 0 and bernoulli_prob_corr == 0: # isir
@@ -159,10 +159,11 @@ def ex2_mcmc_mala(z,
             z, _, _, mask = mala_transition.do_transition_step(z, z_new, E, grad, grad_step, noise_scale, target, adapt_stepsize=adapt_stepsize)
             acceptance += mask.float()
         acceptance /= mala_steps
+        #print(mala_transition.adapt_grad_step)
     z_sp.append(z.detach().clone())
     acceptance /= n_steps
 
-    return z_sp, acceptance
+    return z_sp, acceptance, mala_transition.adapt_grad_step
 
 
 
