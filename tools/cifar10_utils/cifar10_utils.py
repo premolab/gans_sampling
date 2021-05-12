@@ -322,50 +322,69 @@ def plot_scores_cifar10_dynamics(scores,
                                  path_to_save,
                                  grad_step,
                                  eps_scale,
-                                 coef = 2.0):
-    plt.figure(figsize = figsize)
-    plt.xlabel("number of steps")
-    plt.ylabel("IS")
-    range_steps = [i*every_step for \
+                                 coef = 2.0,
+                                 plot_is = True,
+                                 plot_fid_train = True,
+                                 plot_fid_test = True):
+    if plot_is:
+       plt.figure(figsize = figsize)
+       plt.xlabel("number of steps")
+       plt.ylabel("IS")
+       range_steps = [i*every_step for \
                    i in range(len(scores["inception_scores_mean"]))]
-    plt.plot(range_steps, scores["inception_scores_mean"], c = 'orange', 
+       plt.plot(range_steps, scores["inception_scores_mean"], c = 'orange', 
              label = f'mean IS for {method_name}')
-    plt.fill_between(range_steps, 
+       plt.fill_between(range_steps, 
                      scores["inception_scores_mean"] - coef * scores["inception_scores_std"],
                      scores["inception_scores_mean"] + coef * scores["inception_scores_std"], 
                      color="C0",
                      alpha=0.2, label = fr'confidence interval for mean IS: mean $\pm \; 2 \cdot$ std')
-    plt.title(f"Inception score dynamics for {method_name}")
-    plt.legend()
-    plt.grid(True)
-    name_inception_mean = f'{method_name}_eps_{grad_step}_noise_scale_{eps_scale}_inception_mean.pdf'
-    name_inception_mean_path = os.path.join(path_to_save, name_inception_mean)
-    plt.savefig(name_inception_mean_path)
-    plt.show()
-
-    plt.figure(figsize = figsize)
-    plt.xlabel("number of steps")
-    plt.ylabel("FID")
-    plt.plot(range_steps, scores["fid_scores_mean_train"], c = 'orange', 
+       plt.title(f"Inception score dynamics for {method_name}")
+       plt.legend()
+       plt.grid(True)
+       name_inception_mean = f'{method_name}_eps_{grad_step}_noise_scale_{eps_scale}_inception_mean.pdf'
+       name_inception_mean_path = os.path.join(path_to_save, name_inception_mean)
+       plt.savefig(name_inception_mean_path)
+       plt.show()
+    if plot_fid_train:
+       range_steps = [i*every_step for \
+                   i in range(len(scores["fid_scores_mean_train"]))]
+       plt.figure(figsize = figsize)
+       plt.xlabel("number of steps")
+       plt.ylabel("FID")
+       plt.plot(range_steps, scores["fid_scores_mean_train"], c = 'orange', 
              label = f'mean FID for {method_name} on train')
-    plt.fill_between(range_steps, 
+       plt.fill_between(range_steps, 
                      scores["fid_scores_mean_train"] - coef * scores["fid_scores_std_train"],
                      scores["fid_scores_mean_train"] + coef * scores["fid_scores_std_train"], 
                      color="C0",
                      alpha=0.2, 
                      label = fr'confidence interval for mean FID on train: mean $\pm \; 2 \cdot$ std')
-    plt.plot(range_steps, scores["fid_scores_mean_test"], c = 'green', 
+       plt.title(f"Frechet Inception distance dynamics for {method_name}")
+       plt.legend()
+       plt.grid(True)
+       name_fid_mean = f'{method_name}_eps_{grad_step}_noise_scale_{eps_scale}_fid_mean_train.pdf'
+       name_fid_mean_path = os.path.join(path_to_save, name_fid_mean)
+       plt.savefig(name_fid_mean_path)
+       plt.show()
+    if plot_fid_test:   
+       range_steps = [i*every_step for \
+                   i in range(len(scores["fid_scores_mean_test"]))]
+       plt.figure(figsize = figsize)
+       plt.xlabel("number of steps")
+       plt.ylabel("FID")
+       plt.plot(range_steps, scores["fid_scores_mean_test"], c = 'green', 
              label = f'mean FID for {method_name} on test')
-    plt.fill_between(range_steps, 
+       plt.fill_between(range_steps, 
                      scores["fid_scores_mean_test"] - coef * scores["fid_scores_std_test"],
                      scores["fid_scores_mean_test"] + coef * scores["fid_scores_std_test"], 
                      color="C2",
                      alpha=0.2, 
                      label = fr'confidence interval for mean FID on test: mean $\pm \; 2 \cdot$ std')
-    plt.title(f"Frechet Inception distance dynamics for {method_name}")
-    plt.legend()
-    plt.grid(True)
-    name_fid_mean = f'{method_name}_eps_{grad_step}_noise_scale_{eps_scale}_fid_mean.pdf'
-    name_fid_mean_path = os.path.join(path_to_save, name_fid_mean)
-    plt.savefig(name_fid_mean_path)
-    plt.show()
+       plt.title(f"Frechet Inception distance dynamics for {method_name}")
+       plt.legend()
+       plt.grid(True)
+       name_fid_mean = f'{method_name}_eps_{grad_step}_noise_scale_{eps_scale}_fid_mean_test.pdf'
+       name_fid_mean_path = os.path.join(path_to_save, name_fid_mean)
+       plt.savefig(name_fid_mean_path)
+       plt.show()
