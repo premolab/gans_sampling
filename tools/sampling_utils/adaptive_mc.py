@@ -88,7 +88,8 @@ def ex2_mcmc_mala(z,
                 corr_coef=0., 
                 bernoulli_prob_corr=0., 
                 flow=None,
-                adapt_stepsize=False):
+                adapt_stepsize=False,
+                verbose=False):
     z_sp = [] ###vector of samples
     batch_size, z_dim = z.shape[0], z.shape[1]
 
@@ -100,7 +101,8 @@ def ex2_mcmc_mala(z,
     if flow is not None:
         z, log_jac = flow(z)
 
-    for step_id in tqdm(range(n_steps)):
+    range_gen = trange if verbose else range
+    for step_id in range_gen(n_steps):
         z_sp.append(z.detach().clone())
 
         if corr_coef == 0 and bernoulli_prob_corr == 0: # isir
