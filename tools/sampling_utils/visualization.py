@@ -580,14 +580,14 @@ def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
         k == 0
         if len(instance['mode_std']) > 0:
             k += 1
-            axs[0].plot(np.arange(0, len(evol['mode_std'])) * every, evol['mode_std'], label=label, marker='o')
+            axs[0].plot(np.arange(1, len(evol['mode_std'])+1) * every, evol['mode_std'], label=label, marker='o')
         if len(instance['hqr']) > 0:
             k += 1   
-            axs[1].plot(np.arange(0, len(evol['hqr'])) * every, evol['hqr'], label=label, marker='o')
+            axs[1].plot(np.arange(1, len(evol['hqr'])+1) * every, evol['hqr'], label=label, marker='o')
         if len(instance['jsd']) > 0:
             k += 1
-            axs[2].plot(np.arange(0, len(evol['jsd'])) * every, evol['jsd'], label=label, marker='o')
-        emd_ax.plot(np.arange(0, len(evol['emd'])) * every, evol['emd'], label=label, marker='o')
+            axs[2].plot(np.arange(1, len(evol['jsd'])+1) * every, evol['jsd'], label=label, marker='o')
+        emd_ax.plot(np.arange(1, len(evol['emd'])+1) * every, evol['emd'], label=label, marker='o')
 
     if k > 0:
          for ax in axs:

@@ -185,11 +185,17 @@ class Evolution(object):
         sample_dist /= sample_dist.sum()
         uniform_dist = torch.FloatTensor([1. / n_modes for _ in range(n_modes)] + [0]).to(assignment.device)
         M = .5 * (uniform_dist + sample_dist)
-        JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)) + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M))
+        # JSD = .5 * (sample_dist * torch.log((sample_dist + 1e-7) / M)) + .5 * (uniform_dist * torch.log((uniform_dist + 1e-7) / M))
 
-        JSD[sample_dist == 0.] = 0.
-        JSD[uniform_dist == 0.] = 0.
-        JSD = JSD.sum()
+        # JSD[sample_dist == 0.] = 0.
+        # JSD[uniform_dist == 0.] = 0.
+        # JSD = JSD.sum()
+
+        KL1 = sample_dist * (torch.log(sample_dist) - torch.log(M))
+        KL1[sample_dist == 0.] = 0.
+        KL2 = uniform_dist * (torch.log(uniform_dist)  -torch.log(M))
+        KL2[uniform_dist == 0.] = 0.
+        JSD = .5 * (KL1 + KL2).sum()
 
         return JSD
 
