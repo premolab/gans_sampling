@@ -177,7 +177,6 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
 @torch.no_grad()
 def mh_sampling(X_train, G, D, device, n_calib_pts, 
                 batch_size_sample,
-                normalize_to_0_1=True,
                 type_calibrator='iso'):
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
     real_calib_data = [torch.FloatTensor(X_train[calib_ids])]
@@ -185,8 +184,6 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
     BASE_D = 'base'
     scores_real = {}
     scores_real[BASE_D] = np.concatenate([D(data.to(device)).detach().cpu().numpy()[:, 0] for data in real_calib_data])
-    if normalize_to_0_1:
-       scores_real[BASE_D] = expit(scores_real[BASE_D])
     scores_real_df = validate_scores(scores_real)
     n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
     if rem != 0:
@@ -200,8 +197,6 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
         x = G(noise).detach()
 
         scores = {BASE_D: D(x).detach().cpu().numpy()[:, 0]}
-        if normalize_to_0_1:
-           scores[BASE_D] = expit(scores[BASE_D])
         
         x = x.cpu().numpy()
         return x, scores
@@ -248,3 +243,48 @@ def mh_sampling(X_train, G, D, device, n_calib_pts,
                                                        n_samples=batch_size_sample)
 
     return X
+
+@torch.no_grad()
+def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts, 
+                             batch_size_sample,
+                             n_steps,
+                             type_calibrator='iso'):
+    
+    calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
+    real_calib_data = [torch.FloatTensor(X_train[calib_ids])]
+
+    BASE_D = 'base'
+    scores_real = {}
+    scores_real[BASE_D] = np.concatenate([D(data.to(device)).detach().cpu().numpy()[:, 0] for data in real_calib_data])
+    scores_real_df = validate_scores(scores_real)
+    n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
+    if rem != 0:
+       raise ValueError('Number calibration points must be divisible by batch size')
+    
+    z_dim = G.z_dim
+    
+    def gen_disc_f(batch_size_fixed_):
+        noise = torch.randn(batch_size_fixed_, z_dim, device=device)
+        x = G(noise).detach()
+
+        scores = {BASE_D: D(x).detach().cpu().numpy()[:, 0]}
+        x = x.cpu().numpy()
+        return x, scores
+
+    ref_method = (BASE_D, 'raw')
+    incep_ref = BASE_D + '_iso_base'
+    #score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
+    if type_calibrator=='iso':
+        calib_dict = {'iso': cl.Isotonic}
+    elif type_calibrator=='raw':
+        calib_dict = {'raw': cl.Identity}
+    elif type_calibrator=='linear':
+        calib_dict = {'linear': cl.Linear}
+    elif type_calibrator=='beta1':
+        calib_dict = {'beta1': cl.Beta1}
+    elif type_calibrator=='beta2':
+        calib_dict = {'beta2': cl.Beta2}
+    else:
+        raise TypeError('Unknown calibrator type')
+
+    

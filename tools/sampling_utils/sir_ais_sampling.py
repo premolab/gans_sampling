@@ -24,7 +24,7 @@ import ebm_sampling
 #                           grad_energy)
 
 def compute_sir_log_weights(x, target, proposal):
-    return target.log_prob(x) -  proposal.log_prob(x)
+    return target(x) -  proposal.log_prob(x)
 
 def sir_independent_dynamics(z, target, proposal, n_steps, N):
    z_sp = []
@@ -56,6 +56,9 @@ def sir_independent_dynamics(z, target, proposal, n_steps, N):
 
    z_sp.append(z)
    return z_sp
+
+from ebm_sampling import sampling_from_dynamics
+sir_independent_dynamics_sampling = sampling_from_dynamics(sir_independent_dynamics)
     
 def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
    z_sp = []
@@ -91,6 +94,8 @@ def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
 
    z_sp.append(z)
    return z_sp
+
+sir_correlated_dynamics_sampling = sampling_from_dynamics(sir_correlated_dynamics)
 
 def run_experiments_gaussians(dim_arr,  
                               scale_proposal, 

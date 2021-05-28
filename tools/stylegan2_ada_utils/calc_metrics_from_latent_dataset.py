@@ -374,8 +374,11 @@ def compute_fid_for_latent_dataset(opts, max_real, num_gen, num_splits, latent_d
         print(f"split = {i}")
         rng1 = np.random.default_rng(i)
         rng2 = np.random.default_rng(i+num_splits)
-        act1_bs = dataset_features[rng1.permutation(dataset_features.shape[0])]
-        act2_bs = latent_dataset_features[rng2.permutation(latent_dataset_features.shape[0])]
+        act1_bs = dataset_features[rng1.choice(dataset_features.shape[0], dataset_features.shape[0], 
+                                               replace=True)]
+        act2_bs = latent_dataset_features[rng2.choice(latent_dataset_features.shape[0],
+                                                      latent_dataset_features.shape[0],
+                                                      replace=True)]
 
         mu_real_split, sigma_real_split = calculate_activation_statistics(act1_bs)
         mu_gen_split, sigma_gen_split = calculate_activation_statistics(act2_bs)
@@ -507,8 +510,16 @@ def calc_metric(metric, **kwargs): # See metric_utils.MetricOptions for the full
 def delete_nan_samples(z):
    return z[~np.isnan(z).any(axis=1)]
 
-def pipeline_for_latent_dataset(G, device, data, load_batches, path_to_save_cifar10_np, method_name, every_step):
-    metrics = ['is50k_for_latent_dataset', 'fid50k_full_for_latent_dataset']
+def pipeline_for_latent_dataset(G, device, data, 
+                                load_batches, path_to_save_cifar10_np, 
+                                method_name, every_step, calc_is = True):
+    if calc_is:
+       metrics = ['is50k_for_latent_dataset', 'fid50k_full_for_latent_dataset']
+       names_list = ["inception_scores_mean", "inception_scores_std",
+                 "fid_scores_mean_train", "fid_scores_std_train"]
+    else:
+       metrics = ['fid50k_full_for_latent_dataset']
+       names_list = ["fid_scores_mean_train", "fid_scores_std_train"]
     network_pkl = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/cifar10.pkl'
     gpus = 1
     verbose = True
@@ -521,9 +532,6 @@ def pipeline_for_latent_dataset(G, device, data, load_batches, path_to_save_cifa
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     G = copy.deepcopy(args.G).eval().requires_grad_(False).to(device)
-
-    names_list = ["inception_scores_mean", "inception_scores_std", 
-                 "fid_scores_mean_train", "fid_scores_std_train"]
 
     inception_scores_mean = []
     inception_scores_std = []
@@ -550,17 +558,22 @@ def pipeline_for_latent_dataset(G, device, data, load_batches, path_to_save_cifa
                                       num_gpus=args.num_gpus, rank=rank, device=device, progress=progress,
                                       latent_dataset = latent_arr)
             all_dicts[metric] = result_dict
+        
+        if calc_is:
+           inception_scores_mean.append(all_dicts['is50k_for_latent_dataset']['results']['is50k_latent_mean'])
+           inception_scores_std.append(all_dicts['is50k_for_latent_dataset']['results']['is50k_latent_std'])
+           print(f"{method_name} mean inception score = {inception_scores_mean[i]}, std inception score = {inception_scores_std[i]}") 
 
-        inception_scores_mean.append(all_dicts['is50k_for_latent_dataset']['results']['is50k_latent_mean'])
-        inception_scores_std.append(all_dicts['is50k_for_latent_dataset']['results']['is50k_latent_std'])
         fid_scores_mean_train.append(all_dicts['fid50k_full_for_latent_dataset']['results']['fid50k_latent_mean'])
         fid_scores_std_train.append(all_dicts['fid50k_full_for_latent_dataset']['results']['fid50k_latent_std'])
 
-        print(f"{method_name} mean inception score = {inception_scores_mean[i]}, std inception score = {inception_scores_std[i]}")
         print(f"FID score for train CIFAR10 with {method_name}: mean {fid_scores_mean_train[i]}, score {fid_scores_std_train[i]}")
 
-    arrays_list = [inception_scores_mean, inception_scores_std,
-                  fid_scores_mean_train, fid_scores_std_train]
+    if calc_is:
+       arrays_list = [inception_scores_mean, inception_scores_std,
+                      fid_scores_mean_train, fid_scores_std_train]
+    else:
+       arrays_list = [fid_scores_mean_train, fid_scores_std_train]
 
     dict_results = {}
     for i in range(len(names_list)):
