@@ -34,7 +34,6 @@ def grad_energy(point, target, x=None):
     grad = torch.autograd.grad(energy.sum(), point)[0]
     return energy, grad    
 
-
 def gan_energy(z, generator, discriminator, 
                proposal, normalize_to_0_1, log_prob=False, z_transform=None):
     if z_transform is None:

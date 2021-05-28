@@ -123,6 +123,32 @@ def plot_real_data(X_train,
        plt.show()
                    
 
+def plot_real_data(X_train, 
+                   title,
+                   path_to_save = None, 
+                   path_to_save_remote = None,
+                   port_to_remote = None):
+    plt.figure(figsize=figsize)
+    plt.xlim(-3., 3.)
+    plt.ylim(-3., 3.)
+    plt.title(title, fontsize=20)
+    plt.scatter(X_train[:,:1], X_train[:,1:], alpha=0.3, color='gray', 
+                marker='o', label = 'training samples')
+    plt.legend()
+    plt.grid(True)
+    plt.xlabel(r"$x_{1}$")
+    plt.ylabel(r"$x_{2}$")
+    if path_to_save is not None:
+       plt.savefig(path_to_save)
+       send_file_to_remote(path_to_save,
+                           port_to_remote, 
+                           path_to_save_remote)
+       plt.show()
+       plt.close()
+    else:
+       plt.show()
+                   
+
 def plot_fake_data_projection(fake, X_train, 
                               proj_1, proj_2, 
                               title,
@@ -305,6 +331,122 @@ def langevin_sampling_plot_2d(target,
                         path_to_save_remote = path_to_save_remote,
                         port_to_remote = port_to_remote,
                         params = params)
+
+def mh_sampling_normal_proposal_plot_2d(target,
+                                        proposal,
+                                        X_train,  
+                                        path_to_save = None,
+                                        scaler = None, 
+                                        batch_size_sample = 5000,
+                                        path_to_save_remote = None,
+                                        port_to_remote = None,
+                                        eps_scale = 1e-2,
+                                        n_steps = 5000,
+                                        acceptance_rule = 'Hastings',
+                                        n_batches = 1,
+                                        latent_transform = None):
+    batchsize = batch_size_sample // n_batches
+    X_mh, zs = mh_sampling_normal_proposal(target, proposal, batchsize, batch_size_sample, 
+                                       None, None, None, None, 
+                                       n_steps, eps_scale, acceptance_rule)
+    if latent_transform is not None:
+        X_mh = torch.FloatTensor(X_mh).to(proposal.device)
+        X_mh = latent_transform(X_mh).data.cpu().numpy()
+    mode = 'MH'
+    params = f'std noise = {round(eps_scale, 3)}'
+    plot_fake_data_mode(X_mh, X_train, mode, 
+                        path_to_save = path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+
+def sir_correlated_plot_2d(target,
+                           proposal,
+                           X_train,  
+                           path_to_save = None,
+                           scaler = None, 
+                           batch_size_sample = 5000,
+                           path_to_save_remote = None,
+                           port_to_remote = None,
+                           N = 2,
+                           n_steps = 5000,
+                           alpha = 0.95,
+                           n_batches = 1,
+                           latent_transform = None):
+    batchsize = batch_size_sample // n_batches
+    X_mh, zs = sir_correlated_dynamics_sampling(target, proposal, batchsize, batch_size_sample, 
+                                                None, None, None, None, 
+                                                n_steps, N, alpha)
+    if latent_transform is not None:
+        X_mh = torch.FloatTensor(X_mh).to(proposal.device)
+        X_mh = latent_transform(X_mh).data.cpu().numpy()
+    mode = 'CISIR'
+    params = f'N = {N}, alpha = {round(alpha, 3)}'
+    plot_fake_data_mode(X_mh, X_train, mode, 
+                        path_to_save = path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+
+def sir_independent_plot_2d(target,
+                           proposal,
+                           X_train,  
+                           path_to_save = None,
+                           scaler = None, 
+                           batch_size_sample = 5000,
+                           path_to_save_remote = None,
+                           port_to_remote = None,
+                           N = 2,
+                           n_steps = 5000,
+                           n_batches = 1,
+                           latent_transform = None):
+    batchsize = batch_size_sample // n_batches
+    X_mh, zs = sir_independent_dynamics_sampling(target, proposal, batchsize, batch_size_sample, 
+                                                None, None, None, None, 
+                                                n_steps, N)
+    if latent_transform is not None:
+        X_mh = torch.FloatTensor(X_mh).to(proposal.device)
+        X_mh = latent_transform(X_mh).data.cpu().numpy()
+    mode = 'SIR'
+    params = f'N = {N}'
+    plot_fake_data_mode(X_mh, X_train, mode, 
+                        path_to_save = path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+
+def mh_sampling_normal_proposal_plot_2d(target,
+                                        proposal,
+                                        X_train,  
+                                        path_to_save = None,
+                                        scaler = None, 
+                                        batch_size_sample = 5000,
+                                        path_to_save_remote = None,
+                                        port_to_remote = None,
+                                        eps_scale = 1e-2,
+                                        n_steps = 5000,
+                                        acceptance_rule = 'Hastings',
+                                        n_batches = 1,
+                                        latent_transform = None):
+    batchsize = batch_size_sample // n_batches
+    X_mh, zs = mh_sampling_normal_proposal(target, proposal, batchsize, batch_size_sample, 
+                                       None, None, None, None, 
+                                       n_steps, eps_scale, acceptance_rule)
+    if latent_transform is not None:
+        X_mh = torch.FloatTensor(X_mh).to(proposal.device)
+        X_mh = latent_transform(X_mh).data.cpu().numpy()
+    mode = 'MH'
+    params = f'std noise = {round(eps_scale, 3)}'
+    plot_fake_data_mode(X_mh, X_train, mode, 
+                        path_to_save = path_to_save, 
+                        scaler = scaler,
+                        path_to_save_remote = path_to_save_remote,
+                        port_to_remote = port_to_remote,
+                        params = params)
+
                         
 def mala_sampling_plot_2d(target,
                           proposal,
