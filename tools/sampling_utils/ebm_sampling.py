@@ -41,20 +41,20 @@ def gan_energy(z, generator, discriminator,
         return -energy
 
 
-def gan_energy_stylegan2_ada(z, generator, discriminator, truncation_psi, noise_mode,
-                             proposal, normalize_to_0_1, log_prob=False, z_transform=None):
+def gan_energy_stylegan2_ada(z, generator, discriminator,
+                             proposal, normalize_to_0_1,
+                             log_prob=False, z_transform=None):
     label = torch.zeros([z.shape[0], generator.c_dim], device=z.device)
     if z_transform is None:
-        generator_points = generator(z, label,
-                                     truncation_psi=truncation_psi, noise_mode=noise_mode)
+        generator_points = generator(z, label)
     else:
-        generator_points = generator(z_transform(z), label,
-                                     truncation_psi=truncation_psi, noise_mode=noise_mode)
+        generator_points = generator(z_transform(z), label)
     if normalize_to_0_1:
         gan_part = -discriminator(generator_points, label).view(-1)
     else:
         sigmoid_gan_part = discriminator(generator_points, label)
-        gan_part = -(torch.log(sigmoid_gan_part) - torch.log1p(-sigmoid_gan_part)).view(-1)
+        gan_part = -(torch.log(sigmoid_gan_part) -
+                     torch.log1p(-sigmoid_gan_part)).view(-1)
 
     proposal_part = -proposal.log_prob(z)
 
@@ -241,6 +241,67 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale,
 
 
 mala_sampling = sampling_from_dynamics(mala_dynamics)
+
+
+def mh_dynamics_normal_proposal(z, target, proposal,
+                                n_steps, eps_scale,
+                                acceptance_rule='Hastings'):
+    z_sp = [z.clone().detach()]
+    batch_size, z_dim = z.shape[0], z.shape[1]
+    device = z.device
+
+    # !!
+    std_norm = (torch.distributions
+                .multivariate_normal
+                .MultivariateNormal(torch.zeros(z_dim).to(device),
+                                    torch.eye(z_dim).to(device)))
+
+    uniform = Uniform(low=0.0, high=1.0)
+    acceptence = torch.zeros(batch_size).to(device)
+    log_accept_prob = None
+
+    for _ in range(n_steps):
+        E = -target(z)
+
+        eps = eps_scale * std_norm.sample([batch_size]).to(device)
+        new_z = z + eps
+        new_z = new_z.data
+
+        E_new = -target(new_z)
+
+        energy_part = E - E_new
+
+        propose_vec_1 = z - new_z
+        propose_vec_2 = new_z - z
+
+        #    propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
+        #    propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
+        propose_part_1 = std_norm.log_prob(propose_vec_1/eps_scale)
+        propose_part_2 = std_norm.log_prob(propose_vec_2/eps_scale)
+
+        propose_part = propose_part_1 - propose_part_2
+
+        if acceptance_rule == 'Hastings':
+            log_accept_prob = propose_part + energy_part
+
+        elif acceptance_rule == 'Barker':
+            log_ratio = propose_part + energy_part
+            log_accept_prob = -torch.log(1. + torch.exp(-log_ratio))
+
+        generate_uniform_var = uniform.sample([batch_size]).to(z.device)
+        log_generate_uniform_var = torch.log(generate_uniform_var)
+        mask = log_generate_uniform_var < log_accept_prob
+
+        acceptence += mask
+        with torch.no_grad():
+            z[mask] = new_z[mask].detach().clone()
+            z = z.data
+            z_sp.append(z.clone().detach())
+
+    return z_sp, acceptence
+
+
+mh_sampling_normal_proposal = sampling_from_dynamics(mh_dynamics_normal_proposal)
 
 
 def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N):
