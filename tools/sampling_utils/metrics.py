@@ -114,6 +114,7 @@ class Evolution(object):
         self.target_log_prob = kwargs.get('target_log_prob', None)
         self.target_sample = target_sample
         self.scaler = kwargs.get('scaler', None)
+        self.q = kwargs.get('q', 0.999)
 
         self.mode_std = []
         self.high_quality_rate = []
@@ -213,7 +214,7 @@ class Evolution(object):
         self.emd.append(emd)
         
         if self.locs is not None and self.sigma is not None:
-            assignment = Evolution.make_assignment(X_gen, self.locs, self.sigma)
+            assignment = Evolution.make_assignment(X_gen, self.locs, self.sigma, self.q)
             #print(assignment.shape)
             mode_std = Evolution.compute_mode_std(X_gen, assignment)
             #print(mode_std)
@@ -224,7 +225,8 @@ class Evolution(object):
             self.jsd.append(jsd.item())
 
         if self.target_log_prob is not None:
-            pi_d, pi_g, opt_ds, X = get_pis_estimate(X_gen, self.target_log_prob, n_pts=4000, sample_method='grid', density_method='gmm')
+            pi_d, pi_g, opt_ds, X = get_pis_estimate(X_gen, self.target_log_prob, 
+                                                     n_pts=4000, sample_method='grid', density_method='gmm')
             kl = pi_g * (np.log(pi_g) - np.log(pi_d + 1e-10))
             kl[pi_g == 0.] = 0.
             kl = np.mean(kl).item()
