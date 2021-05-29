@@ -443,7 +443,7 @@ def mh_sampling_plot_2d(generator,
                         batch_size_sample=5000,
                         path_to_save_remote=None,
                         port_to_remote=None,
-                        type_calibrator='iso',
+                        type_calibrator='isotonic',
                         normalize_to_0_1=True):
     if scaler is not None:
         X_train_scale = scaler.transform(X_train)
@@ -458,7 +458,7 @@ def mh_sampling_plot_2d(generator,
                                     batch_size_sample=batch_size_sample,
                                     n_steps=n_steps,
                                     type_calibrator=type_calibrator,
-                                    normalize_to_0_1=True)
+                                    normalize_to_0_1=normalize_to_0_1)
     mode = 'MHGAN'
     params = f'n_steps = {n_steps}, calibrator = {type_calibrator}'
     plot_fake_data_mode(X_mh, X_train, mode, 
