@@ -10,13 +10,14 @@ from tqdm import tqdm
 
 from scipy.special import expit
 
+
 def validate_scores(scores):
     assert isinstance(scores, dict)
     for sv in scores.values():
         assert isinstance(sv, np.ndarray)
         assert sv.dtype.kind == 'f'
         assert sv.ndim == 1
-        assert np.all(0 <= sv) and np.all(sv <= 1)
+        # assert np.all(0 <= sv) and np.all(sv <= 1)
     scores = pd.DataFrame(scores)
     return scores
 
@@ -197,7 +198,7 @@ def mh_sampling(X_train, G, D, device,
     scores_real = {BASE_D: np.concatenate([(D(data.to(device))
                                             .detach().cpu()
                                             .numpy()[:, 0]) for data in real_calib_data])}
-    # scores_real_df = validate_scores(scores_real)
+    scores_real_df = validate_scores(scores_real)
     n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
     if rem != 0:
         raise ValueError('Number calibration points must be divisible by batch size')
