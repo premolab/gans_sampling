@@ -16,15 +16,17 @@ import numpy as np
 from scipy.special import logit
 from scipy.special import expit as logistic
 
-EPS = 1e-14
+# EPS = 1e-14
 
-#ignore warnings for zero-division
+# ignore warnings for zero-division
 np.seterr(divide='ignore')
 
+
 def cumargmax(x):
-    '''why is this not in numpy? This may not work with nans.
+    """
+    why is this not in numpy? This may not work with nans.
     This uses last occurence not first occurence like argmax.
-    '''
+    """
     x = np.asarray(x)
 
     assert x.ndim == 1
@@ -41,20 +43,22 @@ def cumargmax(x):
 
 
 def binary_posterior(P0, P1):
-    '''Get posterior on P(case 1|x) given likelihoods for case 0 and case 1, P0
+    """Get posterior on P(case 1|x) given likelihoods for case 0 and case 1, P0
     and P1, resp.
-    '''
+    """
     posterior_1 = np.true_divide(P1, P1 + P0)
     return posterior_1
 
 
 def disc_2_odds_ratio(P_disc):
-    odds_ratio = 1.0 / ((1.0 / (P_disc + EPS)) - 1.0)
+    # odds_ratio = 1.0 / ((1.0 / (P_disc + EPS)) - 1.0)
+    odds_ratio = 1.0 / ((1.0 / P_disc) - 1.0)
     return odds_ratio
 
 
 def odds_ratio_2_disc(odds_ratio):
-    P_disc = 1.0 / ((1.0 / (odds_ratio + EPS)) + 1.0)
+    # P_disc = 1.0 / ((1.0 / (odds_ratio + EPS)) + 1.0)
+    P_disc = 1.0 / ((1.0 / odds_ratio) + 1.0)
     return P_disc
 
 
@@ -69,7 +73,8 @@ def accept_prob_MH_disc(P_disc_last, P_disc_new):
     assert np.all(0.0 <= P_disc_last) and np.all(P_disc_last <= 1.0)
     assert np.all(0.0 <= P_disc_new) and np.all(P_disc_new <= 1.0)
 
-    alpha = ((1.0 / (P_disc_last + EPS)) - 1.0) / ((1.0 / (P_disc_new + EPS)) - 1.0)
+    # alpha = ((1.0 / (P_disc_last + EPS)) - 1.0) / ((1.0 / (P_disc_new + EPS)) - 1.0)
+    alpha = ((1.0 / P_disc_last) - 1.0) / ((1.0 / P_disc_new) - 1.0)
     # Use fmin so get alpha=1 on nan which results from 0 or 1 P_disc values
     # unclear which is the best value for alpha at the discontinuities.
     alpha = np.fmin(1.0, alpha)
@@ -141,8 +146,9 @@ def rejection_sample(d_score, epsilon=1e-6, shift_percent=95.0, score_max=None,
 
 
 def _mh_sample(d_score, init_picked=0, start=1, random=np.random):
-    '''Same as `mh_sample` but more obviously correct.
-    '''
+    """
+    Same as `mh_sample` but more obviously correct.
+    """
     assert(np.ndim(d_score) == 1 and len(d_score) > 0)
     assert(0 <= np.min(d_score) and np.max(d_score) <= 1)
     assert(init_picked < start)
@@ -155,7 +161,7 @@ def _mh_sample(d_score, init_picked=0, start=1, random=np.random):
         # Note: we might want to move to log or logit scale for disc probs if
         # this starts to create numerics issues.
         alpha = accept_prob_MH_disc(d_last, d_new)
-        assert(0 <= alpha and alpha <= 1)
+        assert(0 <= alpha <= 1)
         if random.rand() <= alpha:
             d_last = d_new
             picked_round = ii

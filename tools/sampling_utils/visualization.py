@@ -7,7 +7,7 @@ import torch
 
 from general_utils import send_file_to_remote
 
-from mh_sampling import mh_sampling
+from mh_sampling import mh_sampling, mh_sampling_from_scratch
 from ebm_sampling import (langevin_sampling, 
                           mala_sampling,
                           mh_sampling_normal_proposal)
@@ -464,30 +464,30 @@ def mala_sampling_plot_2d(target,
 
 def mh_sampling_plot_2d(generator, 
                         discriminator,
-                        X_train, 
+                        X_train,
+                        n_steps,
                         path_to_save=None,
                         n_calib_pts=10000,
                         scaler=None,
                         batch_size_sample=5000,
                         path_to_save_remote=None,
                         port_to_remote=None,
-                        type_calibrator='iso',
-                        normalize_to_0_1=True):
+                        type_calibrator='iso'):
     if scaler is not None:
         X_train_scale = scaler.transform(X_train)
     else:
         X_train_scale = X_train
     print("Start to do MH sampling....")
-    X_mh = mh_sampling(X_train_scale, 
-                       generator, 
-                       discriminator, 
-                       generator.device, 
-                       n_calib_pts, 
-                       batch_size_sample=batch_size_sample,
-                       normalize_to_0_1=normalize_to_0_1,
-                       type_calibrator=type_calibrator)
+    X_mh = mh_sampling_from_scratch(X_train_scale,
+                                    generator,
+                                    discriminator,
+                                    generator.device,
+                                    n_calib_pts,
+                                    batch_size_sample=batch_size_sample,
+                                    n_steps=n_steps,
+                                    type_calibrator=type_calibrator)
     mode = 'MHGAN'
-    params = f'calibrator = {type_calibrator}'
+    params = f'n_steps = {n_steps}, calibrator = {type_calibrator}'
     plot_fake_data_mode(X_mh, X_train, mode, 
                         path_to_save=path_to_save,
                         scaler=scaler,

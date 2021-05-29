@@ -1,13 +1,11 @@
 import classification as cl
-from tempfile import mkdtemp
-#import mlpaper.benchmark_tools as bt
-import mlpaper.classification as btc
-import mlpaper.sciprint as sp
-#based on https://github.com/uber-research/metropolis-hastings-gans/blob/master/mhgan/classification.py with 
-#install mlpaper
+# import mlpaper.benchmark_tools as bt
+# based on https://github.com/uber-research/metropolis-hastings-gans/blob/master/mhgan/classification.py with
+# install mlpaper
 
 import numpy as np
 import pandas as pd
+
 
 def validate_scores(scores):
     assert isinstance(scores, dict)
@@ -19,6 +17,7 @@ def validate_scores(scores):
     scores = pd.DataFrame(scores)
     return scores
 
+
 def validate_X(X):
     assert isinstance(X, np.ndarray)
     assert X.dtype.kind == 'f'
@@ -27,43 +26,46 @@ def validate_X(X):
     assert np.all(np.isfinite(X))
     return X
 
+
 def validate(R):
-    '''
+    """
     X : ndarray, shape (batch_size, nc, image_size, image_size)
     scores : dict of str -> ndarray of shape (batch_size,)
-    '''
+    """
     X, scores = R
     X = validate_X(X)
     scores = validate_scores(scores)
     assert len(X) == len(scores)
     return X, scores
 
+
 def batched_gen_and_disc(gen_and_disc, n_batches, batch_size):
-    '''
+    """
     Get a large batch of images. Pytorch might run out of memory if we set
     the batch size to n_images=n_batches*batch_size directly.
     g_d_f : callable returning (X, scores) compliant with `validate`
     n_images : int
         assumed to be multiple of batch size
-    '''
+    """
     X, scores = zip(*[validate(gen_and_disc(batch_size))
                       for _ in range(n_batches)])
     X = np.concatenate(X, axis=0)
     scores = pd.concat(scores, axis=0, ignore_index=True)
     return X, scores
 
+
 def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
                            calib_dict,
                            dump_fname=None,
                            label='label'):
-    '''
+    """
     scores_fake_df : DataFrame, shape (n, n_discriminators)
     scores_real_df : DataFrame, shape (n, n_discriminators)
     ref_method : (str, str)
     perf_report : str
     calib_report : str
     clf_df : DataFrame, shape (n_calibrators, n_discriminators)
-    '''
+    """
     # Build combined data set dataframe and train calibrators
     pred_df, y_true = cl.combine_class_df(neg_class_df=scores_fake_df,
                                           pos_class_df=scores_real_df)
@@ -71,11 +73,11 @@ def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
                                                    calibrators=calib_dict)
     # Make methods flat to be compatible with benchmark tools
     pred_df.columns = cl.flat_cols(pred_df.columns)
-    ref_method = cl.flat(ref_method)  # Make it flat as well
+    # ref_method = cl.flat(ref_method)  # Make it flat as well
 
     # Do calibration analysis
-    #Z = cl.calibration_diagnostic(pred_df, y_true)
-    #calib_report = Z.to_string()
+    # Z = cl.calibration_diagnostic(pred_df, y_true)
+    # calib_report = Z.to_string()
 
     # Dump prediction to csv in case we want it for later analysis
     if dump_fname is not None:
@@ -85,43 +87,45 @@ def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
 
     # No compute report on performance of each discriminator:
     # Make it into log-scale cat distn for use with benchmark tools
-    #pred_df = cl.binary_pred_to_one_hot(pred_df, epsilon=1e-12)
-    #print(y_true)
-    #print(pred_df)
-    #perf_df, _ = btc.summary_table(pred_df, y_true,
+    # pred_df = cl.binary_pred_to_one_hot(pred_df, epsilon=1e-12)
+    # print(y_true)
+    # print(pred_df)
+    # perf_df, _ = btc.summary_table(pred_df, y_true,
     #                               btc.STD_CLASS_LOSS, btc.STD_BINARY_CURVES,
     #                               ref_method=ref_method)
 
-    #crap_lim = const_dict(1)
+    # crap_lim = const_dict(1)
 
-    #try:
+    # try:
     #    perf_report = sp.just_format_it(perf_df, shift_mod=3,
     #                                    crap_limit_min=crap_lim,
     #                                    crap_limit_max=crap_lim,
     #                                    EB_limit=crap_lim,
     #                                    non_finite_fmt={'nan': '--'})
-    #except Exception as e:
+    # except Exception as e:
     #    print(str(e))
     #    perf_report = perf_df.to_string()
-    #return perf_report, calib_report, clf_df
+    # return perf_report, calib_report, clf_df
     return pred_df, clf_df
 
+
 def base(score, score_max=None):
-    '''This is a normal GAN. It always just selects the first generated image
+    """This is a normal GAN. It always just selects the first generated image
     in a series.
-    '''
+    """
     idx = 0
     return idx, 1.0
 
+
 def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
                     pickers):
-    '''
-    Return selected image (among a batcf on n images) for each picker.
+    """
+    Return selected image (among a batch on n images) for each picker.
     scores_df : DataFrame, shape (n, n_discriminators)
     scores_real_df : DataFrame, shape (m, n_discriminators)
     clf_df : Series, shape (n_classifiers x n_calibrators,)
     pickers : dict of str -> callable
-    '''
+    """
     assert len(scores_df.columns.names) == 1
     assert list(scores_df.columns) == list(scores_real_df.columns)
 
@@ -141,14 +145,14 @@ def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
         assert np.ndim(s0) == 0
         for calib_name in sorted(clf_df[disc_name].index):
             assert isinstance(calib_name, str)
-            #print(f"calibrator name = {calib_name}, discriminator name = {disc_name}")
+            # print(f"calibrator name = {calib_name}, discriminator name = {disc_name}")
             calibrator = clf_df[(disc_name, calib_name)]
             s_ = np.concatenate(([s0], scores_df[disc_name].values))
             s_ = calibrator.predict(s_)
             s_max, = calibrator.predict(np.array([scores_max[disc_name]]))
             for picker_name in sorted(pickers.keys()):
                 assert isinstance(picker_name, str)
-                #print(f"picker name = {picker_name}")
+                # print(f"picker name = {picker_name}")
                 idx, aa = pickers[picker_name](s_, score_max=s_max)
 
                 if idx == 0:
@@ -163,12 +167,13 @@ def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
                 alpha.loc[picker_name, (disc_name, calib_name)] = aa
     return picked, cap_out, alpha
 
+
 def enhance_samples_series(g_d_f, scores_real_df, clf_df,
                            pickers, n_images=16,
-                           batch_size = 16,
-                           chain_batches = 10,
-                           max_est_batches = 156):
-    '''
+                           batch_size=16,
+                           chain_batches=10,
+                           max_est_batches=156):
+    """
     Call enhance_samples multiple times to build up a batch of selected images.
     Stores list of used images X separate from the indices of the images
     selected by each method. This is more memory efficient if there are
@@ -177,10 +182,10 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     calibrator : dict of str -> trained sklearn classifier
         same keys as scores
     n_images : int
-    '''
-    #batch_size = 16   # Batch size to use when calling the pytorch generator G
-    #chain_batches = 10  # Number of batches to use total for the pickers
-    #max_est_batches = 156  # Num batches for estimating M in DRS pilot samples
+    """
+    # batch_size = 16   # Batch size to use when calling the pytorch generator G
+    # chain_batches = 10  # Number of batches to use total for the pickers
+    # max_est_batches = 156  # Num batches for estimating M in DRS pilot samples
 
     assert n_images > 0
 
@@ -194,12 +199,13 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     picked = [None] * n_images
     cap_out = [None] * n_images
     alpha = [None] * n_images
+    picked_ = [None] * n_images
     picked_num = 0
     all_generated_num = 0
     for nn in range(n_images):
         X_, scores_fake_df = \
             batched_gen_and_disc(g_d_f, chain_batches, batch_size)
-        #print(f"Shape of generated random images = {X_.shape}")
+        # print(f"Shape of generated random images = {X_.shape}")
         picked_, cc, aa = \
             enhance_samples(scores_fake_df, scores_max, scores_real_df, clf_df,
                             pickers=pickers)
