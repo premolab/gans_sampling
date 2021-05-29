@@ -22,7 +22,7 @@ class Calibrator(object):
         y_pred = np.asarray(y_pred)
         assert y_pred.ndim == 1
         assert y_pred.dtype.kind == 'f'
-        assert np.all(0 <= y_pred) and np.all(y_pred <= 1)
+        # assert np.all(0 <= y_pred) and np.all(y_pred <= 1)
 
         if y_true is not None:
             y_true = np.asarray(y_true)
@@ -61,8 +61,9 @@ class Linear(Calibrator):
 
 class Isotonic(Calibrator):
     def __init__(self):
-        self.clf = IsotonicRegression(y_min=0.0, y_max=1.0,
-                                      out_of_bounds='clip')
+        # self.clf = IsotonicRegression(y_min=0.0, y_max=1.0,
+        #                              out_of_bounds='clip')
+        self.clf = IsotonicRegression()
 
     def fit(self, y_pred, y_true):
         assert y_true is not None
@@ -119,7 +120,9 @@ CALIB_DICT = {'raw': Identity, 'iso': Isotonic}
 
 
 def flat(tup, delim='_'):
-    '''Join only invertible if delim not in elements.'''
+    """
+    Join only invertible if delim not in elements.
+    """
     assert not any(delim in x for x in tup)
     flat_str = delim.join(tup)
     return flat_str
@@ -132,13 +135,13 @@ def flat_cols(cols, delim='_', name=None):
 
 
 def combine_class_df(neg_class_df, pos_class_df):
-    '''
+    """
     neg_class_df : DataFrame, shape (n, n_features)
     pos_class_df : DataFrame, shape (n, n_features)
         Must have same keys as `neg_class_df`
     df : DataFrame, shape (2 * n, n_features)
     y_true : ndarray, shape (2 * n,)
-    '''
+    """
     # Adding a new col won't change anything in original
     neg_class_df = pd.DataFrame(neg_class_df, copy=True)
     pos_class_df = pd.DataFrame(pos_class_df, copy=True)
@@ -158,7 +161,7 @@ def combine_class_df(neg_class_df, pos_class_df):
 
 
 def calibrate_pred_df(pred_df, y_true, calib_frac=0.5, calibrators=CALIB_DICT):
-    '''
+    """
     df : DataFrame, shape (n, n_classifiers)
     y_true : ndarray, shape (n,)
     calib_frac : float
@@ -167,7 +170,7 @@ def calibrate_pred_df(pred_df, y_true, calib_frac=0.5, calibrators=CALIB_DICT):
         m = calib_frac * n, but rounded
     y_true_test : ndarray, shape (m,)
     clf_df : Series, shape (n_classifiers x n_calibrators,)
-    '''
+    """
     assert len(pred_df.columns.names) == 1
     assert not pred_df.isnull().any().any()
     assert len(pred_df) == len(y_true)
@@ -198,10 +201,10 @@ def calibrate_pred_df(pred_df, y_true, calib_frac=0.5, calibrators=CALIB_DICT):
 
 
 def binary_pred_to_one_hot(df, epsilon=0.0):
-    '''
+    """
     df : DataFrame, shape (n, n_discriminators)
     df : DataFrame, shape (n, 2 * n_discriminators)
-    '''
+    """
     assert len(df.columns.names) == 1
     assert not df.isnull().any().any()
 
@@ -221,12 +224,12 @@ def binary_pred_to_one_hot(df, epsilon=0.0):
 
 
 def calib_score(y_prob, y_true):
-    '''
+    """
     y_prob : ndarray, shape (n,)
         floats in [0, 1]
     y_true : ndarray, shape (n,)
         bool
-    '''
+    """
     assert y_true.dtype.kind == 'b'
 
     Z = np.sum(y_true - y_prob) / np.sqrt(np.sum(y_prob * (1.0 - y_prob)))
