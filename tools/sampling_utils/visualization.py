@@ -301,7 +301,7 @@ def langevin_sampling_plot_2d(target,
         X_langevin = torch.FloatTensor(X_langevin).to(proposal.device)
         X_langevin = latent_transform(X_langevin).data.cpu().numpy()
     mode = 'ULA'
-    params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}'
+    params = f'n_steps = {n_steps}, lr = {grad_step}, std noise = {round(eps_scale, 3)}'
     plot_fake_data_mode(X_langevin, X_train, mode, 
                         path_to_save=path_to_save,
                         scaler=scaler,
@@ -331,8 +331,8 @@ def mh_sampling_normal_proposal_plot_2d(target,
     if latent_transform is not None:
         X_mh = torch.FloatTensor(X_mh).to(proposal.device)
         X_mh = latent_transform(X_mh).data.cpu().numpy()
-    mode = 'MH'
-    params = f'std noise = {round(eps_scale, 3)}'
+    mode = f'MH, acceptance rule = {acceptance_rule}'
+    params = f'n_steps = {n_steps}, std noise = {round(eps_scale, 3)}'
     plot_fake_data_mode(X_mh, X_train, mode, 
                         path_to_save=path_to_save,
                         scaler=scaler,
@@ -363,7 +363,7 @@ def sir_correlated_plot_2d(target,
         X_mh = torch.FloatTensor(X_mh).to(proposal.device)
         X_mh = latent_transform(X_mh).data.cpu().numpy()
     mode = 'CISIR'
-    params = f'N = {N}, alpha = {round(alpha, 3)}'
+    params = f'n_steps={n_steps}, N = {N}, alpha = {round(alpha, 3)}'
     plot_fake_data_mode(X_mh, X_train, mode, 
                         path_to_save=path_to_save,
                         scaler=scaler,
@@ -393,7 +393,7 @@ def sir_independent_plot_2d(target,
         X_mh = torch.FloatTensor(X_mh).to(proposal.device)
         X_mh = latent_transform(X_mh).data.cpu().numpy()
     mode = 'SIR'
-    params = f'N = {N}'
+    params = f'n_steps={n_steps}, N = {N}'
     plot_fake_data_mode(X_mh, X_train, mode, 
                         path_to_save=path_to_save,
                         scaler=scaler,
@@ -424,7 +424,7 @@ def mala_sampling_plot_2d(target,
         X_mala = torch.FloatTensor(X_mala).to(proposal.device)
         X_mala = latent_transform(X_mala).data.cpu().numpy()
     mode = f'MALA/{acceptance_rule}'
-    params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}'
+    params = f'n_steps={n_steps}, lr = {grad_step}, std noise = {round(eps_scale, 3)}'
     plot_fake_data_mode(X_mala, X_train, mode, 
                         path_to_save=path_to_save,
                         scaler=scaler,
@@ -432,35 +432,6 @@ def mala_sampling_plot_2d(target,
                         port_to_remote=port_to_remote,
                         params=params)
                         
-# def xtry_langevin_sampling_plot_2d(target,
-#                                    proposal,
-#                                    X_train,  
-#                                    path_to_save = None,
-#                                    scaler = None, 
-#                                    batch_size_sample = 5000,
-#                                    path_to_save_remote = None,
-#                                    port_to_remote = None,
-#                                    N = 2,
-#                                    grad_step = 1e-3,
-#                                    eps_scale = 1e-2,
-#                                    n_steps = 5000,
-#                                    n_batches = 1,
-#                                    latent_transform = None):
-#     batchsize = batch_size_sample // n_batches
-#     X_xtry_langevin, zs = xtry_langevin_sampling(target, proposal, n_steps,
-#     grad_step, eps_scale, N, batch_size_sample, batchsize)
-#     if latent_transform is not None:
-#         X_xtry_langevin = torch.FloatTensor(X_xtry_langevin).to(proposal.device)
-#         X_xtry_langevin = latent_transform(X_xtry_langevin).data.cpu().numpy()
-#     mode = 'X-Try-ULA'
-#     params = f'lr = {grad_step}, std noise = {round(eps_scale, 3)}, N = {N}'
-#     plot_fake_data_mode(X_xtry_langevin, X_train, mode, 
-#                         path_to_save = path_to_save, 
-#                         scaler = scaler,
-#                         path_to_save_remote = path_to_save_remote,
-#                         port_to_remote = port_to_remote,
-#                         params = params)                        
-
 
 def mh_sampling_plot_2d(generator, 
                         discriminator,
