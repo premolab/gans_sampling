@@ -258,7 +258,7 @@ def mh_sampling(X_train, G, D, device,
     return X
 
 
-@torch.no_grad()
+## @torch.no_grad()
 def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts, 
                              batch_size_sample,
                              n_steps,
@@ -302,22 +302,32 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
     max_val = max(np.max(scores_fake_df[BASE_D].values),
                   np.max(scores_real_df[BASE_D].values))
 
+    if normalize_to_0_1:
+        min_val = 0.0
+        max_val = 1.0
     ref_method = (BASE_D, 'raw')
     # incep_ref = BASE_D + '_iso_base'
     # score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
+    print("Used calibrator: ")
     if type_calibrator == 'isotonic':
         calib_dict = {'isotonic': cl.Isotonic(min_val, max_val)}
+        print(calib_dict)
     elif type_calibrator == 'raw':
         calib_dict = {'raw': cl.Identity()}
+        print(calib_dict)
     elif type_calibrator == 'linear':
         calib_dict = {'linear': cl.Linear()}
+        print(calib_dict)
     elif type_calibrator == 'beta1':
         calib_dict = {'beta1': cl.Beta1()}
+        print(calib_dict)
     elif type_calibrator == 'beta2':
         calib_dict = {'beta2': cl.Beta2()}
+        print(calib_dict)
     else:
         raise TypeError('Unknown calibrator type')
 
+    print("start to train calibrator")
     pred_df_dump, clf_df = discriminator_analysis(scores_fake_df,
                                                   scores_real_df, ref_method,
                                                   calib_dict=calib_dict)
