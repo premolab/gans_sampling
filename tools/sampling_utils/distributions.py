@@ -104,7 +104,7 @@ class Gaussian_mixture(Target):
         log_p = torch.tensor([], device=self.device)
         #pdb.set_trace()
         for i in range(self.num):
-            log_paux = (torch.log(self.pis[i]) + self.peak[i].log_prob(z)).view(-1, 1)
+            log_paux = (torch.log(self.pis[i]) + self.peak[i].log_prob(z.to(self.device))).view(-1, 1)
             log_p = torch.cat([log_p, log_paux], dim=-1)
         log_density = torch.logsumexp(log_p, dim=1) 
         return log_density

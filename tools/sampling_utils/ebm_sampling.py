@@ -178,7 +178,7 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale,
     # !!
     std_norm = (torch.distributions
                 .multivariate_normal
-                .MultivariateNormal(torch.zeros(z_dim), torch.eye(z_dim)))
+                .MultivariateNormal(torch.zeros(z_dim).to(device), torch.eye(z_dim).to(device)))
 
     if adapt_stepsize:
         eps_scale = (2 * grad_step)**(1/2)

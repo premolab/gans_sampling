@@ -87,7 +87,7 @@ def get_pis_estimate(X_gen, target_log_prob, n_pts=4000, sample_method='grid', d
 
     elif density_method == 'gmm':
         gm_g = mixture.GaussianMixture(n_components=25)
-        gm_g.fit(X_gen.detach())
+        gm_g.fit(X_gen.detach().cpu().numpy())
         pi_g_f = lambda x: np.exp(gm_g.score_samples(x))
     optD = lambda x: target_pdf(x) / (target_pdf(x) + pi_g_f(x) + 1e-8)
 
@@ -141,7 +141,7 @@ class Evolution(object):
         """
         x_dim = X_gen.shape[-1]
         n_modes = assignment.shape[1]
-        std = torch.FloatTensor([0.0])
+        std = torch.FloatTensor([0.0]).to(X_gen.device)
         found_modes = 0
         for mode_id in range(n_modes):
             xs = X_gen[assignment[:, mode_id]]
@@ -178,8 +178,9 @@ class Evolution(object):
 
     @staticmethod
     def compute_jsd(assignment):
+        device = assignment.device
         n_modes = assignment.shape[1]
-        assign_ = torch.cat([assignment, torch.zeros(assignment.shape[0]).unsqueeze(1)], -1)
+        assign_ = torch.cat([assignment, torch.zeros(assignment.shape[0]).to(device).unsqueeze(1)], -1)
         assign_[:, -1][assignment.sum(1) == 0] = 1
         sample_dist = assign_.sum(dim=0) / float(assign_.shape[0])
         sample_dist /= sample_dist.sum()

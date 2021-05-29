@@ -617,7 +617,7 @@ def epoch_visualization(X_train,
 
 def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
     instance = list(evols.values())[0]
-    keys = ['mode_std', 'hqr', 'jsd', 'emd']
+    keys = ['mode_std', 'hqr', 'jsd']
     ncols = int(np.sum([int(len(instance[k]) > 0) for k in keys]))
     
     fig, axs = plt.subplots(ncols=ncols, nrows=1, figsize=(6*ncols, 6))
@@ -629,37 +629,40 @@ def plot_chain_metrics(every=50, name=None, savepath=None, sigma=0.05, **evols):
         axs[k].axhline(sigma, label='real', color='black')
         axs[k].set_xlabel('iter')
         axs[k].set_ylabel('mode std')
+        axs[k].set_title('Estimation of mode standard deviation of samples')
         k += 1
 
     if len(instance['hqr']) > 0:
         axs[k].axhline(1, label='real', color='black')
         axs[k].set_xlabel('iter')
         axs[k].set_ylabel('high quality rate')
+        axs[k].set_title('High quality rate of samples')
         k += 1
 
     if len(instance['jsd']) > 0:
         axs[k].axhline(0, label='real', color='black')
         axs[k].set_xlabel('iter')
         axs[k].set_ylabel('JSD')
+        axs[k].set_title('JSD between uniform and empirical distributions')
         k += 1
 
-    emd_ax = axs if k == 0 else axs[k]
-    emd_ax.axhline(0, label='real', color='black')
-    emd_ax.set_xlabel('iter')
-    emd_ax.set_ylabel('EMD')
+    # emd_ax = axs if k == 0 else axs[k]
+    # emd_ax.axhline(0, label='real', color='black')
+    # emd_ax.set_xlabel('iter')
+    # emd_ax.set_ylabel('EMD')
 
     for label, evol in evols.items():
         k = 0
         if len(instance['mode_std']) > 0:
             k += 1
-            axs[0].plot(np.arange(1, len(evol['mode_std'])+1) * every, evol['mode_std'], label=label, marker='o')
+            axs[0].plot(np.arange(len(evol['mode_std'])) * every, evol['mode_std'], label=label, marker='o')
         if len(instance['hqr']) > 0:
             k += 1   
-            axs[1].plot(np.arange(1, len(evol['hqr'])+1) * every, evol['hqr'], label=label, marker='o')
+            axs[1].plot(np.arange(len(evol['hqr'])) * every, evol['hqr'], label=label, marker='o')
         if len(instance['jsd']) > 0:
             k += 1
-            axs[2].plot(np.arange(1, len(evol['jsd'])+1) * every, evol['jsd'], label=label, marker='o')
-        emd_ax.plot(np.arange(1, len(evol['emd'])+1) * every, evol['emd'], label=label, marker='o')
+            axs[2].plot(np.arange(len(evol['jsd'])) * every, evol['jsd'], label=label, marker='o')
+        # emd_ax.plot(np.arange(1, len(evol['emd'])+1) * every, evol['emd'], label=label, marker='o')
 
     if k > 0:
         for ax in axs:
