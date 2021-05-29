@@ -308,13 +308,13 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
     if type_calibrator == 'isotonic':
         calib_dict = {'isotonic': cl.Isotonic(min_val, max_val)}
     elif type_calibrator == 'raw':
-        calib_dict = {'raw': cl.Identity}
+        calib_dict = {'raw': cl.Identity()}
     elif type_calibrator == 'linear':
-        calib_dict = {'linear': cl.Linear}
+        calib_dict = {'linear': cl.Linear()}
     elif type_calibrator == 'beta1':
-        calib_dict = {'beta1': cl.Beta1}
+        calib_dict = {'beta1': cl.Beta1()}
     elif type_calibrator == 'beta2':
-        calib_dict = {'beta2': cl.Beta2}
+        calib_dict = {'beta2': cl.Beta2()}
     else:
         raise TypeError('Unknown calibrator type')
 

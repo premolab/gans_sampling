@@ -161,7 +161,7 @@ def combine_class_df(neg_class_df, pos_class_df):
     return df, y_true
 
 
-def calibrate_pred_df(pred_df, y_true, calib_frac=0.5, calibrators=CALIB_DICT):
+def calibrate_pred_df(pred_df, y_true, calibrators, calib_frac=0.5):
     """
     df : DataFrame, shape (n, n_classifiers)
     y_true : ndarray, shape (n,)
@@ -187,7 +187,7 @@ def calibrate_pred_df(pred_df, y_true, calib_frac=0.5, calibrators=CALIB_DICT):
         y_prob = pred_df[method].values
         y_prob_train, y_prob_test = y_prob[idx], y_prob[~idx]
         for calib_name, calib in calibrators.items():
-            clf = calib()
+            clf = calib
             clf.fit(y_prob_train, y_true_train)
             clf_df[(method, calib_name)] = clf
 
