@@ -188,7 +188,7 @@ def calibrate_pred_df(pred_df, y_true, calibrators, calib_frac=0.5):
         y_prob_train, y_prob_test = y_prob[idx], y_prob[~idx]
         for calib_name, calib in calibrators.items():
             clf = calib
-            clf.fit(y_prob_train, y_true_train)
+            clf.fit(y_pred=y_prob_train, y_true=y_true_train)
             clf_df[(method, calib_name)] = clf
 
         for calib_name in calibrators:
