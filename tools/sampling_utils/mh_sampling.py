@@ -262,7 +262,7 @@ def mh_sampling(X_train, G, D, device,
 def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts, 
                              batch_size_sample,
                              n_steps,
-                             type_calibrator='iso',
+                             type_calibrator='isotonic',
                              normalize_to_0_1=True):
     
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
@@ -275,6 +275,7 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
     if normalize_to_0_1:
         scores_real[BASE_D] = expit(scores_real[BASE_D])
     scores_real_df = validate_scores(scores_real)
+
     # scores_real_df = pd.DataFrame(scores_real)
     n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
     if rem != 0:
@@ -292,11 +293,20 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
         x = x.cpu().numpy()
         return x, scores
 
+    _, scores_fake_df = batched_gen_and_disc(gen_disc_f, n_real_batches,
+                                             batch_size_sample)
+
+    min_val = min(np.min(scores_fake_df[BASE_D].values),
+                  np.min(scores_real_df[BASE_D].values))
+
+    max_val = max(np.max(scores_fake_df[BASE_D].values),
+                  np.max(scores_real_df[BASE_D].values))
+
     ref_method = (BASE_D, 'raw')
     # incep_ref = BASE_D + '_iso_base'
     # score_fname = os.path.join(outf, '%d_scores.csv' % epoch)
-    if type_calibrator == 'iso':
-        calib_dict = {'iso': cl.Isotonic}
+    if type_calibrator == 'isotonic':
+        calib_dict = {'isotonic': cl.Isotonic(min_val, max_val)}
     elif type_calibrator == 'raw':
         calib_dict = {'raw': cl.Identity}
     elif type_calibrator == 'linear':
@@ -307,9 +317,6 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
         calib_dict = {'beta2': cl.Beta2}
     else:
         raise TypeError('Unknown calibrator type')
-
-    _, scores_fake_df = batched_gen_and_disc(gen_disc_f, n_real_batches,
-                                             batch_size_sample)
 
     pred_df_dump, clf_df = discriminator_analysis(scores_fake_df,
                                                   scores_real_df, ref_method,

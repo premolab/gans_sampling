@@ -60,10 +60,11 @@ class Linear(Calibrator):
 
 
 class Isotonic(Calibrator):
-    def __init__(self):
+    def __init__(self, y_min, y_max):
         # self.clf = IsotonicRegression(y_min=0.0, y_max=1.0,
         #                              out_of_bounds='clip')
-        self.clf = IsotonicRegression()
+        self.clf = IsotonicRegression(y_min=y_min, y_max=y_max,
+                                      out_of_bounds='clip')
 
     def fit(self, y_pred, y_true):
         assert y_true is not None
