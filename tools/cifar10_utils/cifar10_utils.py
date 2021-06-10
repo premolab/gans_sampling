@@ -99,7 +99,7 @@ def save_images_for_fid_fix_latent(G,
         
         if (start_ind + batch_size <= max_num_imgs):
             fixed_noise = latent_arr[start_ind:start_ind + batch_size].to(device)
-            fake_images = G(fixed_noise)
+            fake_images = G(fixed_noise).clamp(-1, 1)
             start_ind += batch_size
             
             fake_norm_np = ((1. + fake_images)/2).detach().cpu().numpy()
@@ -109,7 +109,7 @@ def save_images_for_fid_fix_latent(G,
             
         else:
             fixed_noise = latent_arr[start_ind:].to(device)
-            fake_images = G(fixed_noise)
+            fake_images = G(fixed_noise).clamp(-1, 1)
             add_num_imgs = max_num_imgs - start_ind
             batch_real = batch_real[:add_num_imgs]
             
