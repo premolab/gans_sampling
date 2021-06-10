@@ -4,7 +4,7 @@ import torch
 import random
 import time
 import os
-from dataloader import GenDataset, LatentFixDataset
+from dataloader import LatentFixDataset
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 
@@ -16,9 +16,7 @@ sys.path.append(api_path_sampling)
 sys.path.append(api_path_gan_metrics)
 
 from metrics import inception_score
-from ebm_sampling import aggregate_sampling_output
 from fid_score import calculate_fid_given_paths
-from kid_score import calculate_kid_given_paths
 
 def save_images_for_fid(G,
                         real_dataloader,

@@ -258,7 +258,48 @@ def mh_sampling(X_train, G, D, device,
     return X
 
 
-## @torch.no_grad()
+def enhance_samples_series_from_scratch(g_d_f, scores_real_df, clf_df,
+                                        pickers, n_samples=16,
+                                        batch_size=64,
+                                        chain_batches=10):
+    """
+    Call enhance_samples multiple times to build up a batch of selected images.
+    Stores list of used images X separate from the indices of the images
+    selected by each method. This is more memory efficient if there are
+    duplicate images selected.
+    g_d_f : callable returning (X, scores) compliant with `validate`
+    calibrator : dict of str -> trained sklearn classifier
+        same keys as scores
+    n_images : int
+    """
+    assert n_samples > 0
+    X = []
+    picked_ = None
+    picked_num = 0
+    all_generated_num = 0
+
+    X_, scores_fake_df = batched_gen_and_disc(g_d_f, chain_batches*n_samples,
+                                              batch_size)
+
+
+
+    for nn in tqdm(range(n_samples)):
+        X_, scores_fake_df = \
+            batched_gen_and_disc(g_d_f, chain_batches, batch_size)
+        picked_, cc, aa = enhance_samples(scores_fake_df,
+                                          scores_real_df, clf_df,
+                                          pickers=pickers)
+        picked_ = picked_.unstack()  # Convert to series
+        used_idx, idx_new = np.unique(picked_.values, return_inverse=True)
+        add_X = list(X_[used_idx])
+
+        X.extend(add_X)  # Unravel first index to list
+
+    X = np.asarray(X)
+    return X
+
+
+@torch.no_grad()
 def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts, 
                              batch_size_sample,
                              n_steps,
