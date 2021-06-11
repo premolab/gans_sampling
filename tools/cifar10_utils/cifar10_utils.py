@@ -7,6 +7,7 @@ import os
 from dataloader import LatentFixDataset
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
+from tqdm import tqdm
 
 import sys
 cwd = os.getcwd()
@@ -93,7 +94,7 @@ def save_images_for_fid_fix_latent(G,
     max_num_imgs = latent_arr.shape[0]
     start_ind = 0
 
-    for  i, data_real in enumerate(real_dataloader, 0):
+    for  i, data_real in tqdm(enumerate(real_dataloader, 0)):
         batch_real = data_real[0]
         batch_size = batch_real.shape[0]
         
