@@ -60,7 +60,8 @@ def save_images_for_fid_fix_latent(G,
                                    latent_arr,
                                    device,
                                    transformer,
-                                   random_seed):
+                                   random_seed,
+                                   normalize_imgs=False):
     fake_list = []
     real_list = []
     torch.manual_seed(random_seed)
@@ -83,8 +84,12 @@ def save_images_for_fid_fix_latent(G,
             clamp_fake_images = fake_images.clamp(-1, 1)
             start_ind += batch_size
 
-            fake_norm_np = ((1. + clamp_fake_images) / 2).detach().cpu().numpy()
-            real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
+            if normalize_imgs:
+                fake_norm_np = ((1. + clamp_fake_images) / 2).detach().cpu().numpy()
+                real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
+            else:
+                fake_norm_np = clamp_fake_images.detach().cpu().numpy()
+                real_norm_np = batch_real.detach().cpu().numpy()
             fake_list.append(fake_norm_np)
             real_list.append(real_norm_np)
 
@@ -98,8 +103,12 @@ def save_images_for_fid_fix_latent(G,
             clamp_fake_images = fake_images.clamp(-1, 1)
             batch_real = batch_real[:size_noise]
 
-            fake_norm_np = ((1. + clamp_fake_images) / 2).detach().cpu().numpy()
-            real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
+            if normalize_imgs:
+                fake_norm_np = ((1. + clamp_fake_images) / 2).detach().cpu().numpy()
+                real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
+            else:
+                fake_norm_np = clamp_fake_images.detach().cpu().numpy()
+                real_norm_np = batch_real.detach().cpu().numpy()
             fake_list.append(fake_norm_np)
             real_list.append(real_norm_np)
             break
