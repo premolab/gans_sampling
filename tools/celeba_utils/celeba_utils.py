@@ -76,19 +76,26 @@ def save_images_for_fid_fix_latent(G,
 
         if start_ind + batch_size < max_num_imgs:
             fixed_noise = latent_arr[start_ind:start_ind + batch_size].to(device)
-            fake_images = transformer(G(fixed_noise)).clamp(-1, 1)
+            if transformer is not None:
+                fake_images = transformer(G(fixed_noise))
+            else:
+                fake_images = G(fixed_noise)
+            clamp_fake_images = fake_images.clamp(-1, 1)
             start_ind += batch_size
 
-            fake_norm_np = ((1. + fake_images) / 2).detach().cpu().numpy()
+            fake_norm_np = ((1. + clamp_fake_images) / 2).detach().cpu().numpy()
             real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
             fake_list.append(fake_norm_np)
             real_list.append(real_norm_np)
 
         else:
             fixed_noise = latent_arr[start_ind:].to(device)
-            fake_images = transformer(G(fixed_noise)).clamp(-1, 1)
-            add_num_imgs = max_num_imgs - start_ind
-            batch_real = batch_real[:add_num_imgs]
+            size_noise = fixed_noise.shape[0]
+            if transformer is not None:
+                fake_images = transformer(G(fixed_noise))
+            else:
+                fake_images = G(fixed_noise)
+            batch_real = batch_real[:size_noise]
 
             fake_norm_np = ((1. + fake_images) / 2).detach().cpu().numpy()
             real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
@@ -118,19 +125,29 @@ def calculate_celeba_statistics(z_agg_step, G,
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
-    train_dataset = dset.ImageFolder(root=dataroot,
-                                     transform=transforms.Compose([
-                                               transforms.Resize(image_size),
-                                               transforms.CenterCrop(image_size),
-                                               transforms.ToTensor(),
-                                               transforms.Normalize((0.5, 0.5, 0.5),
-                                                                    (0.5, 0.5, 0.5)),
-                                     ]))
+    if image_size is not None:
+        train_dataset = dset.ImageFolder(root=dataroot,
+                                         transform=transforms.Compose([
+                                                   transforms.Resize(image_size),
+                                                   transforms.CenterCrop(image_size),
+                                                   transforms.ToTensor(),
+                                                   transforms.Normalize((0.5, 0.5, 0.5),
+                                                                        (0.5, 0.5, 0.5)),
+                                         ]))
+        transformer = transforms.Compose([transforms.Resize(image_size),
+                                          transforms.CenterCrop(image_size)])
+    else:
+        train_dataset = dset.ImageFolder(root=dataroot,
+                                         transform=transforms.Compose([
+                                             transforms.ToTensor(),
+                                             transforms.Normalize((0.5, 0.5, 0.5),
+                                                                  (0.5, 0.5, 0.5)),
+                                         ]))
+        transformer = None
     train_dataloader = torch.utils.data.DataLoader(train_dataset,
                                                    batch_size=batch_size,
                                                    shuffle=True,
                                                    num_workers=4)
-    transformer = transforms.Compose([transforms.Resize(image_size)])
 
     batch_size_resnet = batch_size
     dim_resnet = 2048
