@@ -142,7 +142,11 @@ def calculate_celeba_statistics(z_agg_step, G,
                                 dataroot,
                                 calculate_is=True,
                                 random_seed=42,
-                                every_step=5):
+                                every_step=5,
+                                normalize_imgs=False,
+                                use_clamp=False,
+                                z_transform=None
+                                ):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
@@ -188,6 +192,8 @@ def calculate_celeba_statistics(z_agg_step, G,
         print(f"sample size after deleteting nans = {no_nans_samples.shape}")
         nsamples = len(no_nans_samples)
         latent_arr = torch.FloatTensor(no_nans_samples)
+        if z_transform is not None:
+            latent_arr = z_transform(latent_arr)
         num_samples = latent_arr.shape[0]
         latent_dataset = LatentFixDatasetCeleba(latent_arr, G,
                                                 device, nsamples)
@@ -217,7 +223,10 @@ def calculate_celeba_statistics(z_agg_step, G,
                                        latent_arr,
                                        device,
                                        transformer,
-                                       random_seed)
+                                       random_seed,
+                                       normalize_imgs,
+                                       use_clamp
+                                       )
         paths_to_train_method = [name_real_train, name_fake_train]
         results_fid_train = calculate_fid_given_paths(paths_to_train_method,
                                                       batch_size_resnet,
