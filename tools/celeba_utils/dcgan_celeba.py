@@ -87,6 +87,22 @@ class Discriminator(nn.Module):
         x = F.leaky_relu(self.bn3(self.conv3(x)), 0.2, True)
         x = F.leaky_relu(self.bn4(self.conv4(x)), 0.2, True)
 
-        x = F.sigmoid(self.conv5(x))
+        # x = F.sigmoid(self.conv5(x))
+        x = self.conv5(x)
 
         return x
+
+
+class Discriminator_logits(nn.Module):
+    def __init__(self, discriminator_sigmoid, ngpu, nc=3, ndf=64):
+        super(Discriminator_cifar10_logits, self).__init__()
+        self.ngpu = ngpu
+        self.main = discriminator_sigmoid.main[:-1]
+
+    def forward(self, input):
+        if input.is_cuda and self.ngpu > 1:
+            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+        else:
+            output = self.main(input)
+
+        return output.view(-1, 1).squeeze(1)
