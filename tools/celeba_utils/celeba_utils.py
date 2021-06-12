@@ -61,7 +61,8 @@ def save_images_for_fid_fix_latent(G,
                                    device,
                                    transformer,
                                    random_seed,
-                                   normalize_imgs=False):
+                                   normalize_imgs=False,
+                                   use_clamp=False):
     fake_list = []
     real_list = []
     torch.manual_seed(random_seed)
@@ -81,7 +82,10 @@ def save_images_for_fid_fix_latent(G,
                 fake_images = transformer(G(fixed_noise))
             else:
                 fake_images = G(fixed_noise)
-            clamp_fake_images = fake_images.clamp(-1, 1)
+            if use_clamp:
+                clamp_fake_images = fake_images.clamp(-1, 1)
+            else:
+                clamp_fake_images = fake_images
             start_ind += batch_size
 
             if normalize_imgs:
@@ -100,7 +104,10 @@ def save_images_for_fid_fix_latent(G,
                 fake_images = transformer(G(fixed_noise))
             else:
                 fake_images = G(fixed_noise)
-            clamp_fake_images = fake_images.clamp(-1, 1)
+            if use_clamp:
+                clamp_fake_images = fake_images.clamp(-1, 1)
+            else:
+                clamp_fake_images = fake_images
             batch_real = batch_real[:size_noise]
 
             if normalize_imgs:
