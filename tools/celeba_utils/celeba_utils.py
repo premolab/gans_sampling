@@ -59,6 +59,7 @@ def save_images_for_fid_fix_latent(G,
                                    name_real_test,
                                    latent_arr,
                                    device,
+                                   transformer,
                                    random_seed):
     fake_list = []
     real_list = []
@@ -73,9 +74,9 @@ def save_images_for_fid_fix_latent(G,
         batch_real = data_real[0]
         batch_size = batch_real.shape[0]
 
-        if start_ind + batch_size <= max_num_imgs:
+        if start_ind + batch_size < max_num_imgs:
             fixed_noise = latent_arr[start_ind:start_ind + batch_size].to(device)
-            fake_images = G(fixed_noise).clamp(-1, 1)
+            fake_images = transformer(G(fixed_noise)).clamp(-1, 1)
             start_ind += batch_size
 
             fake_norm_np = ((1. + fake_images) / 2).detach().cpu().numpy()
@@ -85,7 +86,7 @@ def save_images_for_fid_fix_latent(G,
 
         else:
             fixed_noise = latent_arr[start_ind:].to(device)
-            fake_images = G(fixed_noise).clamp(-1, 1)
+            fake_images = transformer(G(fixed_noise)).clamp(-1, 1)
             add_num_imgs = max_num_imgs - start_ind
             batch_real = batch_real[:add_num_imgs]
 
@@ -129,8 +130,9 @@ def calculate_celeba_statistics(z_agg_step, G,
                                                    batch_size=batch_size,
                                                    shuffle=True,
                                                    num_workers=4)
+    transformer = transforms.Compose([transforms.Resize(image_size)])
 
-    batch_size_resnet = 50
+    batch_size_resnet = batch_size
     dim_resnet = 2048
     model_type = 'inception'
     cuda = True
@@ -176,6 +178,7 @@ def calculate_celeba_statistics(z_agg_step, G,
                                        name_real_train,
                                        latent_arr,
                                        device,
+                                       transformer,
                                        random_seed)
         paths_to_train_method = [name_real_train, name_fake_train]
         results_fid_train = calculate_fid_given_paths(paths_to_train_method,
