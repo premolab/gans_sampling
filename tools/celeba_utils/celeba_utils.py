@@ -19,6 +19,10 @@ from fid_score import calculate_fid_given_paths
 from general_utils import to_var, to_np
 
 
+def unsqueeze_transform(z):
+    return z.unsqueeze(-1).unsqueeze(-1)
+
+
 class LatentFixDatasetCeleba(torch.utils.data.Dataset):
     """Dataset for Generator
     """
