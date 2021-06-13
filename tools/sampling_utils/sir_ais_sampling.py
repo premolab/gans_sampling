@@ -13,7 +13,7 @@ import ebm_sampling
 
 
 def compute_sir_log_weights(x, target, proposal):
-    return target.log_prob(x) - proposal.log_prob(x)
+    return target(x) - proposal.log_prob(x)
 
 
 def sir_independent_dynamics(z, target, proposal, n_steps, N):
