@@ -161,7 +161,7 @@ def calculate_cifar10_statistics(z_agg_step, G,
    random.seed(random_seed)
    test_dataset = dset.CIFAR10(root=path_to_save_cifar10,
                                train=False,
-                               download=False,
+                               download=True,
                            transform=transforms.Compose([
                                transforms.Resize(32),
                                transforms.ToTensor(),
@@ -174,7 +174,7 @@ def calculate_cifar10_statistics(z_agg_step, G,
                                                  num_workers=4)
    train_dataset = dset.CIFAR10(root=path_to_save_cifar10,
                                 train=True,
-                                download=False,
+                                download=True,
                            transform=transforms.Compose([
                                transforms.Resize(32),
                                transforms.ToTensor(),
