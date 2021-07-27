@@ -274,14 +274,6 @@ def enhance_samples_series_from_scratch(g_d_f, scores_real_df, clf_df,
     """
     assert n_samples > 0
     X = []
-    picked_ = None
-    picked_num = 0
-    all_generated_num = 0
-
-    X_, scores_fake_df = batched_gen_and_disc(g_d_f, chain_batches*n_samples,
-                                              batch_size)
-
-
 
     for nn in tqdm(range(n_samples)):
         X_, scores_fake_df = \
@@ -373,8 +365,6 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
                                                   scores_real_df, ref_method,
                                                   calib_dict=calib_dict)
 
-    # print('image dumps...')
-    # Some image dumps in case we want to actually look at generated images
     pickers = {'MH': mh.mh_sample}
     X, picked, cap_out, alpha = enhance_samples_series(gen_disc_f,
                                                        scores_real_df,
