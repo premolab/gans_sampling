@@ -296,7 +296,8 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
                              batch_size_sample,
                              n_steps,
                              type_calibrator='isotonic',
-                             normalize_to_0_1=True):
+                             normalize_to_0_1=True,
+                             process_noise=None):
     
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
     real_calib_data = [torch.FloatTensor(X_train[calib_ids])]
@@ -318,6 +319,8 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
     
     def gen_disc_f(batch_size_fixed_):
         noise = torch.randn(batch_size_fixed_, z_dim, device=device)
+        if process_noise is not None:
+            noise = process_noise(noise)
         x = G(noise).detach()
 
         scores = {BASE_D: D(x).detach().cpu().numpy()[:, 0]}
