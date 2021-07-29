@@ -297,15 +297,22 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
                              n_steps,
                              type_calibrator='isotonic',
                              normalize_to_0_1=True,
-                             process_noise=None):
+                             process_noise=None,
+                             squeeze_discriminator=True):
     
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
     real_calib_data = [torch.FloatTensor(X_train[calib_ids])]
 
     BASE_D = 'base'
-    scores_real = {BASE_D: np.concatenate([(D(data.to(device))
-                                            .detach().cpu()
-                                            .numpy()[:, 0]) for data in real_calib_data])}
+    if squeeze_discriminator:
+        scores_real = {BASE_D: np.concatenate([(D(data.to(device))
+                                                .detach().cpu()
+                                                .numpy()[:, 0]) for data in real_calib_data])}
+    else:
+        scores_real = {BASE_D: np.concatenate([(D(data.to(device))
+                                                    .detach().cpu()
+                                                    .numpy()) for data in real_calib_data])}
+
     if normalize_to_0_1:
         scores_real[BASE_D] = expit(scores_real[BASE_D])
     scores_real_df = validate_scores(scores_real)
@@ -322,8 +329,11 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
         if process_noise is not None:
             noise = process_noise(noise)
         x = G(noise).detach()
-
-        scores = {BASE_D: D(x).detach().cpu().numpy()[:, 0]}
+        discr_values = D(x).detach().cpu().numpy()
+        if squeeze_discriminator:
+            scores = {BASE_D: discr_values[:, 0]}
+        else:
+            scores = {BASE_D: discr_values}
         if normalize_to_0_1:
             scores[BASE_D] = expit(scores[BASE_D])
         x = x.cpu().numpy()
