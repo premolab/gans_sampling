@@ -4,3 +4,6 @@
 /build
 /dist
 /samples/cifar10/downloaded_dataset/*
+/dump
+/data/susy.csv
+/data/creditcard.csv

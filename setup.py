@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-setup(name='gans_sampling', 
+setup(name='iterative_sir', 
       version='0.1',
       description='', 
       packages=find_packages())

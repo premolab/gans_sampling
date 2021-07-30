@@ -15,3 +15,5 @@ To Do
 [ ] Implement examples as in SA MCMC 
 
 To complete while we advance to NeurIPS !! :)
+
+* to do fair ESS
