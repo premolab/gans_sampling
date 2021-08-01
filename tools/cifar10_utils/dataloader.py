@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import random
 
@@ -10,6 +9,7 @@ import sys
 sys.path.append("../sampling_utils")
 
 from general_utils import to_var, to_np
+
 
 def get_loader(
         root,
@@ -43,7 +43,7 @@ class CIFAR10(datasets.CIFAR10):
 
     def preprocess(self):
         normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
-                                        std=[0.5, 0.5, 0.5])
+                                         std=[0.5, 0.5, 0.5])
         if self.train:
             self.transform = transforms.Compose([
                                 transforms.RandomHorizontalFlip(),
@@ -52,7 +52,7 @@ class CIFAR10(datasets.CIFAR10):
                                 normalize,
                             ])
         else:
-            self.transform = transforms.Compose([transforms.ToTensor(), normalize,])
+            self.transform = transforms.Compose([transforms.ToTensor(), normalize])
         return self
 
 
@@ -73,13 +73,13 @@ class CIFAR100(CIFAR10):
 class GenDataset(torch.utils.data.Dataset):
     """Dataset for Generator
     """
-    def __init__(self, G, nsamples, pretrained = False, device = None, z_dim = None):
+    def __init__(self, G, nsamples, pretrained=False, device=None, z_dim=None):
         self.G = G
         self.nsamples = nsamples
-        self.transform=transforms.Compose([
+        self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406),
-                                    (0.229, 0.224, 0.225))
+                                 (0.229, 0.224, 0.225))
         ])
         self.pretrained = pretrained
         self.device = device
@@ -95,33 +95,40 @@ class GenDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.nsamples
 
-    def denorm(self, x):
+    @staticmethod
+    def denorm(x):
         # For fake data generated with tanh(x)
         x = (x + 1) / 2
         return x.clamp(0, 1)
 
+
 class LatentFixDataset(torch.utils.data.Dataset):
     """Dataset for Generator
     """
-    def __init__(self, latent_arr, G, device, nsamples):
+    def __init__(self, latent_arr, G, device, nsamples, use_generator=True):
         self.latent_arr = latent_arr
         self.G = G
         self.nsamples = nsamples
-        self.transform=transforms.Compose([
+        self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406),
-                                    (0.229, 0.224, 0.225))
+                                 (0.229, 0.224, 0.225))
         ])
         self.device = device
+        self.use_generator = use_generator
 
     def __getitem__(self, index):
         z = to_var(self.latent_arr[index], self.device)
-        return self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
+        if self.use_generator:
+            return self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
+        else:
+            return self.transform(to_np(self.denorm(z).permute(1, 2, 0)))
 
     def __len__(self):
         return self.nsamples
 
-    def denorm(self, x):
+    @staticmethod
+    def denorm(x):
         # For fake data generated with tanh(x)
         x = (x + 1) / 2
         return x.clamp(0, 1)
