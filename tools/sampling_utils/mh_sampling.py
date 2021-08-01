@@ -22,28 +22,34 @@ def validate_scores(scores):
     return scores
 
 
-def validate_X(X):
+def validate_X(X, data_type="flatten"):
     assert isinstance(X, np.ndarray)
     assert X.dtype.kind == 'f'
-    batch_size, dim = X.shape
-    assert X.shape == (batch_size, dim)
+    if data_type == "flatten":
+        batch_size, dim = X.shape
+        assert X.shape == (batch_size, dim)
+    elif data_type == "image":
+        batch_size, c, H, W = X.shape
+        assert X.shape == (batch_size, c, H, W)
+    else:
+        raise ValueError('Unknown data type')
     assert np.all(np.isfinite(X))
     return X
 
 
-def validate(R):
+def validate(R, data_type="flatten"):
     """
     X : ndarray, shape (batch_size, nc, image_size, image_size)
     scores : dict of str -> ndarray of shape (batch_size,)
     """
     X, scores = R
-    X = validate_X(X)
+    X = validate_X(X, data_type)
     scores = validate_scores(scores)
     assert len(X) == len(scores)
     return X, scores
 
 
-def batched_gen_and_disc(gen_and_disc, n_batches, batch_size):
+def batched_gen_and_disc(gen_and_disc, n_batches, batch_size, data_type="flatten"):
     """
     Get a large batch of images. Pytorch might run out of memory if we set
     the batch size to n_images=n_batches*batch_size directly.
@@ -51,7 +57,7 @@ def batched_gen_and_disc(gen_and_disc, n_batches, batch_size):
     n_images : int
         assumed to be multiple of batch size
     """
-    X, scores = zip(*[validate(gen_and_disc(batch_size))
+    X, scores = zip(*[validate(gen_and_disc(batch_size), data_type)
                       for _ in range(n_batches)])
     X = np.concatenate(X, axis=0)
     scores = pd.concat(scores, axis=0, ignore_index=True)
@@ -114,7 +120,8 @@ def enhance_samples(scores_df, scores_real_df, clf_df,
 def enhance_samples_series(g_d_f, scores_real_df, clf_df,
                            pickers, n_samples=16,
                            batch_size=64,
-                           chain_batches=10):
+                           chain_batches=10,
+                           data_type="flatten"):
     """
     Call enhance_samples multiple times to build up a batch of selected images.
     Stores list of used images X separate from the indices of the images
@@ -145,7 +152,7 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     all_generated_num = 0
     for nn in tqdm(range(n_samples)):
         X_, scores_fake_df = \
-            batched_gen_and_disc(g_d_f, chain_batches, batch_size)
+            batched_gen_and_disc(g_d_f, chain_batches, batch_size, data_type)
         # print(f"Shape of generated random images = {X_.shape}")
         # picked_, cc, aa = \
         #     enhance_samples(scores_fake_df, scores_max,
@@ -298,7 +305,8 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
                              type_calibrator='isotonic',
                              normalize_to_0_1=True,
                              process_noise=None,
-                             squeeze_discriminator=True):
+                             squeeze_discriminator=True,
+                             data_type="flatten"):
     
     calib_ids = np.random.choice(np.arange(X_train.shape[0]), n_calib_pts)
     real_calib_data = [torch.FloatTensor(X_train[calib_ids])]
@@ -318,9 +326,9 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
     scores_real_df = validate_scores(scores_real)
 
     # scores_real_df = pd.DataFrame(scores_real)
-    n_real_batches, rem = divmod(len(scores_real[BASE_D]), batch_size_sample)
+    n_real_batches, rem = divmod(len(scores_real[BASE_D]), 2)
     if rem != 0:
-        raise ValueError('Number calibration points must be divisible by batch size')
+        raise ValueError('Number calibration points must be divisible by 2')
     
     z_dim = G.z_dim
     
@@ -339,8 +347,10 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
         x = x.cpu().numpy()
         return x, scores
 
-    _, scores_fake_df = batched_gen_and_disc(gen_disc_f, n_real_batches,
-                                             batch_size_sample)
+    _, scores_fake_df = batched_gen_and_disc(gen_disc_f,
+                                             2,
+                                             len(scores_real[BASE_D]) // 2,
+                                             data_type)
 
     min_val = min(np.min(scores_fake_df[BASE_D].values),
                   np.min(scores_real_df[BASE_D].values))
@@ -385,6 +395,7 @@ def mh_sampling_from_scratch(X_train, G, D, device, n_calib_pts,
                                                        pickers,
                                                        n_samples=batch_size_sample,
                                                        chain_batches=1,
-                                                       batch_size=n_steps)
+                                                       batch_size=n_steps,
+                                                       data_type=data_type)
 
     return X
