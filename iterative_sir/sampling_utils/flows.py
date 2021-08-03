@@ -160,7 +160,11 @@ class RNVP(nn.Module):
             hypernet = DenseNN(split_dim, [2 * dim], param_dims)
 
             self.flow = nn.ModuleList(
-                [AffineCoupling(split_dim, hypernet) for _ in range(num_flows)])
+                [
+                    AffineCoupling(split_dim, 
+                        DenseNN(split_dim, [2 * dim], param_dims)
+                        ) for _ in range(num_flows)
+                        ])
 
         even = [i for i in range(0, dim, 2)]
         odd = [i for i in range(1, dim, 2)]

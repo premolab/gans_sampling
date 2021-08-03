@@ -6,7 +6,7 @@ from .general_utils import (DotDict,
                            send_file_to_remote)
 
 from .distributions import (Distribution,
-                           Gaussian_mixture,
+                           GaussianMixture,
                            IndependentNormal,
                            init_independent_normal)
 

@@ -2,12 +2,11 @@ import os
 import numpy as np
 import torch
 from torch.distributions import Uniform
+from tqdm import tqdm, trange
 
 from .distributions import (IndependentNormal,
                            init_independent_normal)
-
-from tqdm import tqdm, trange
-from easydict import EasyDict as edict
+from .mcmc_base import AbstractMCMC, increment_steps, adapt_stepsize_dec
 
 
 def grad_energy(point, target, x=None):
@@ -243,6 +242,42 @@ def mala_dynamics(z, target, proposal, n_steps, grad_step, eps_scale,
 mala_sampling = sampling_from_dynamics(mala_dynamics)
 
 
+class MALA(AbstractMCMC):
+    def __init__(self, dim, **kwargs):
+        super().__init__()
+        self.dim = dim
+        self.device =kwargs.get('device', 'cpu')
+        self.grad_step = kwargs.get('grad_step', 1e-2)
+        self.noise_scale = kwargs.get('noise_scale', (2 * self.grad_step)**.5)
+        self.adapt_stepsize = kwargs.get('adapt_stepsize', False)
+        self.mala_transition = MALATransition(dim, self.device)
+        if self.adapt_stepsize:
+            self.mala_transition.adapt_grad_step = self.grad_step
+            self.mala_transition.adapt_sigma = self.noise_scale
+        
+    #@increment_steps
+    #@adapt_stepsize_dec
+    def __call__(self, z, target, proposal, n_steps, grad_step=None, noise_scale=None, adapt_stepsize=None):
+        adapt_stepsize = self.adapt_stepsize if adapt_stepsize is None else adapt_stepsize
+        grad_step = self.grad_step if grad_step is None else grad_step
+        noise_scale = self.noise_scale if noise_scale is None else noise_scale
+
+        zs = [z.clone().detach()]
+        batch_size = z.shape[0]
+        acceptance = torch.zeros(batch_size)
+        for _ in range(n_steps):
+            energy, grad = grad_energy(z, target, x=None)
+            z_new, _, _, mask = self.mala_transition(z, energy, grad, 
+                                                            grad_step=grad_step, 
+                                                            sigma=noise_scale, 
+                                                            target=target, 
+                                                            adapt_stepsize=adapt_stepsize)
+            zs.append(z_new.detach().clone())
+            acceptance += mask.float() / n_steps
+
+        return zs, acceptance
+
+
 def mh_dynamics_normal_proposal(z, target, proposal,
                                 n_steps, eps_scale,
                                 acceptance_rule='Hastings'):
@@ -364,11 +399,7 @@ class MALATransition(object):
 
         loc = torch.zeros(z_dim).to(device)
         scale = torch.ones(z_dim).to(device)
-        dist_args = edict()
-        dist_args.device = device
-        dist_args.loc = loc
-        dist_args.scale = scale
-        self.stand_normal = IndependentNormal(dist_args)
+        self.stand_normal = IndependentNormal(device=device, loc=loc, scale=scale)
 
         self.adapt_grad_step = 0.
         self.adapt_sigma = 0.
@@ -403,10 +434,10 @@ class MALATransition(object):
 
     def do_transition_step(self, z, z_new, energy, grad, grad_step, sigma,
                            target=None, beta=1.0, adapt_stepsize=False):
-        if adapt_stepsize is True:
-            if self.adapt_grad_step != 0 and self.adapt_sigma != 0:
-                grad_step = self.adapt_grad_step
-                sigma = self.adapt_sigma
+        # if adapt_stepsize is True:
+        #     if self.adapt_grad_step != 0 and self.adapt_sigma != 0:
+        #         grad_step = self.adapt_grad_step
+        #         sigma = self.adapt_sigma
 
         acc_log_prob, energy_new, grad_new = self.compute_log_probs(z, z_new,
                                                                     energy,
@@ -427,7 +458,6 @@ class MALATransition(object):
             energy = energy.float()
             energy[mask] = energy_new[mask].float()
             energy[~mask] = energy[~mask]
-
             grad[mask] = grad_new[mask]
             grad[~mask] = grad[~mask]
 
@@ -440,15 +470,27 @@ class MALATransition(object):
 
         return z, energy, grad, mask
 
+    def __call__(self, z, energy, grad, grad_step=None, sigma=None,
+                           target=None, beta=1.0, adapt_stepsize=False):
+        if adapt_stepsize is True:
+            if self.adapt_grad_step != 0 and self.adapt_sigma != 0:
+                grad_step = self.adapt_grad_step
+                sigma = self.adapt_sigma
 
-class CiterMALATransition(MALATransition):
-    # NOT NEEDED
-    def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma=None):
-        if sigma is None:
-            sigma = (2 * grad_step) ** .5
-        loc = z2 - ((1 - grad_step) * z1 - grad_step * grad)
-        log_prob = self.stand_normal.log_prob(loc/sigma)
-        return log_prob
+        z_new = z - grad_step * beta * grad + sigma * self.stand_normal.sample(z.shape[:-1])
+        z_new, energy, grad, mask = self.do_transition_step(z, z_new, energy, grad, grad_step, sigma,
+                           target=target, beta=beta, adapt_stepsize=adapt_stepsize)
+        return z_new, energy, grad, mask
+
+        
+# class CiterMALATransition(MALATransition):
+#     # NOT NEEDED
+#     def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma=None):
+#         if sigma is None:
+#             sigma = (2 * grad_step) ** .5
+#         loc = z2 - ((1 - grad_step) * z1 - grad_step * grad)
+#         log_prob = self.stand_normal.log_prob(loc/sigma)
+#         return log_prob
 
 
 def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, betas):

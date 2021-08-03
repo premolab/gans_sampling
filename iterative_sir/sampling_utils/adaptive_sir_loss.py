@@ -63,15 +63,15 @@ def forward_kl(target, proposal, flow, y):
     ###PROPOSAL INITIAL DISTR HERE
     y_ = y.detach().requires_grad_()
     u, minus_log_jac = flow.inverse(y_)
-    est = target(y) - proposal.log_prob(u) - minus_log_jac
-    grad_est = - proposal.log_prob(u) - minus_log_jac
+    est = target(y) - proposal(u) - minus_log_jac
+    grad_est = - proposal(u) - minus_log_jac
     return est.mean(), grad_est.mean()
 
 def backward_kl(target, proposal, flow, y):
     u = proposal.sample(y.shape[:-1])
     x, log_jac = flow(u)
-    est = proposal.log_prob(u) - log_jac - target.log_prob(x)
-    grad_est = - log_jac - target.log_prob(x)
+    est = proposal(u) - log_jac - target(x)
+    grad_est = - log_jac - target(x)
     return est.mean(), grad_est.mean()
 
 
@@ -85,6 +85,6 @@ def mix_kl(target, proposal, flow, y, acc_rate=1., alpha= .99, beta=.1): #.2):
     if torch.isnan(grad_est_b).item():
         grad_est_b = 0
 
-    return (alpha * est_f + (1. - alpha) * est_b  + alpha * grad_imp_f - beta * entr, 
-            alpha * grad_est_f + (1. - alpha) * grad_est_b + alpha * grad_imp_f - beta * grad_est_entr)
+    return (alpha * est_f + (1. - alpha) * est_b  + alpha * grad_imp_f, # - beta * entr, 
+            alpha * grad_est_f + (1. - alpha) * grad_est_b + alpha * grad_imp_f) # - beta * grad_est_entr)
 

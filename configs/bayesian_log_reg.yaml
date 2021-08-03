@@ -1,0 +1,69 @@
+batch_size : 30
+device: cpu
+figpath: figs
+respath: dump/bayesian_lr
+data_root: data
+
+methods:
+  ISIR:
+    mcmc_class: CISIR
+    params:
+      N: 5
+
+  CISIR:
+    mcmc_class: CISIR
+    params:
+      N: 5
+      corr_coef: 0.9
+      bernoulli_prob_corr: 0.5
+
+  MALA:
+    mcmc_class: MALA
+    params:
+      grad_step: 0.01
+      adapt_stepsize: True
+
+  "Ex$^2$MCMC \n w/o corr":
+    mcmc_class: Ex2MCMC
+    params:
+      N: 5
+      grad_step: 0.01
+      adapt_stepsize: True
+      mala_steps: 1
+
+  "Ex$^2$MCMC \n w corr":
+    mcmc_class: Ex2MCMC
+    params:
+      N: 5
+      grad_step: 0.01
+      adapt_stepsize: True
+      corr_coef: 0.9
+      bernoulli_prob_corr: 0.5
+      mala_steps: 1
+
+  FlCISIR:
+    mcmc_class: CISIR
+    params:
+      N: 5
+      corr_coef: 0.9
+      bernoulli_prob_corr: 0.5
+    flow:
+      num_flows: 4
+      lr: 0.01
+      batch_size: 100
+      n_steps: 200
+
+  FlEx$^2$MCMC:
+    mcmc_class: Ex2MCMC
+    params:
+      N: 5
+      grad_step: 0.01
+      adapt_stepsize: True
+      corr_coef: 0.9
+      bernoulli_prob_corr: 0.5
+      mala_steps: 1
+    flow:
+      num_flows: 4
+      lr: 0.01
+      batch_size: 100
+      n_steps: 100

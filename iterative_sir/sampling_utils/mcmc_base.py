@@ -2,8 +2,17 @@ import torch
 from abc import ABC, abstractmethod
 
 
+
 def increment_steps(call):
-    def wrapper(self, start : torch.Tensor, target, proposal, n_steps : int, *args, **kwargs):
+    def wrapper(self, start : torch.Tensor, target, proposal, *args, **kwargs):
+        if 'n_steps' in kwargs:
+            n_steps = kwargs.get('n_steps')
+        elif len(args) > 0:
+            n_steps = args[0]
+        elif 'n_steps' in self.__dict__:
+            n_steps = self.__dict__['n_steps']
+        else:
+            raise TypeError('Missing argument \'n_steps\'')
         out = call(self, start, target, proposal, n_steps, *args, **kwargs)
         self._steps_done += n_steps
         return out
@@ -40,7 +49,7 @@ def adapt_stepsize_dec(call):
 class AbstractMCMC(ABC):
     _steps_done = 0
     def __init__(self):
-        AbstractMCMC.steps_done = 0
+        self._steps_done = 0
 
     @abstractmethod
     @increment_steps

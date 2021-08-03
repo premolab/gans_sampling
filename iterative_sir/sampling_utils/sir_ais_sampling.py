@@ -3,8 +3,7 @@ import torch
 import random
 import sklearn
 
-from .distributions import (Gaussian_mixture,
-                           init_independent_normal)
+from .distributions import init_independent_normal
 
 
 from .general_utils import DotDict
@@ -22,9 +21,9 @@ def sir_independent_dynamics(z, target, proposal, n_steps, N):
 
     for _ in range(n_steps):
         z_sp.append(z)
-        U = torch.randint(0, N, (batch_size,)).tolist()
+        ind = torch.randint(0, N, (batch_size,)).tolist()
         X = proposal.sample([batch_size, N])
-        X[np.arange(batch_size), U, :] = z
+        X[np.arange(batch_size), ind, :] = z
         X_view = X.view(-1, z_dim)
 
         log_weight = compute_sir_log_weights(X_view, target, proposal)
@@ -51,7 +50,7 @@ def sir_independent_dynamics(z, target, proposal, n_steps, N):
 sir_independent_sampling = ebm_sampling.sampling_from_dynamics(sir_independent_dynamics)
 
 
-def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
+def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha=0.):
     z_sp = []
     batch_size, z_dim = z.shape[0], z.shape[1]
 
@@ -61,8 +60,6 @@ def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
         ind = torch.randint(0, N, (batch_size,)).tolist()
         W = proposal.sample([batch_size, N])
         U = proposal.sample([batch_size]).unsqueeze(1).repeat(1, N, 1)
-        # print(W.shape, U.shape, z_copy.shape)
-        # X = torch.zeros((batch_size, N, z_dim), dtype = z.dtype).to(z.device)
         X = (alpha**2)*z_copy + alpha*((1 - alpha**2)**0.5)*U + W*((1 - alpha**2)**0.5)
         X[np.arange(batch_size), ind, :] = z
         X_view = X.view(-1, z_dim)

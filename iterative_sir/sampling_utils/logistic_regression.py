@@ -146,7 +146,7 @@ def import_csv_dataset(path, c1=0, c2=1):
     return preprocess(x_train, x_test, y_train, y_test)
 
 
-def import_mnist(c1=5, c2=6):
+def import_digits(c1=5, c2=6):
     dataset = datasets.load_digits()
     # min_max_scaler = preprocessing.MinMaxScaler()
     # X = min_max_scaler.fit_transform(dataset.data)
@@ -190,8 +190,8 @@ class ClassificationDatasetFactory:
             x_train, x_test, y_train, y_test = import_covertype(**kwargs)
         elif name == 'breast':
             x_train, x_test, y_train, y_test = import_breast(**kwargs)
-        elif name == 'mnist':
-            x_train, x_test, y_train, y_test = import_mnist(**kwargs)
+        elif name == 'digits':
+            x_train, x_test, y_train, y_test = import_digits(**kwargs)
         else:
             # csv
             if not name.endswith('.csv'):

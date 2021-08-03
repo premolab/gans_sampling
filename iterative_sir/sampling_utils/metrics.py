@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
+from easydict import EasyDict as edict
 
 from torchvision.models.inception import inception_v3
 from scipy.stats import gaussian_kde
@@ -285,3 +286,13 @@ def ESS(A):
     A = A * (A > 0.05)
     ess = 1. / (1. + 2 * np.sum(A[1:, ...], axis=0))
     return ess
+
+
+class MetricsTracker:
+    stor : dict
+
+    def __init__(self, fields):
+        self.fields = fields
+        self.stor = edict()
+        for field in self.fields:
+            self.stor[field] = []
