@@ -14,4 +14,4 @@ To Do
 [ ] Put Adaptive i-SIR in pipeline from flow and adaptive_mc files
 [ ] Implement examples as in SA MCMC 
 
-To complete while we advance to NeurIPS !! :)
+To complete while we advance to ICLR !! :)
