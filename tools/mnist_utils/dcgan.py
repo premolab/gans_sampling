@@ -4,9 +4,7 @@ from __future__ import print_function
 import argparse
 import os
 import random
-import torch
 import torch.nn as nn
-import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
@@ -14,7 +12,6 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
-# python dcgan.py --dataset mnist --dataroot /scratch/users/vision/yu_dl/raaz.rsk/data/cifar10 --imageSize 28 --cuda --outf . --manualSeed 13 --niter 100
 
 class Generator(nn.Module):
     def __init__(self, ngpu, nc=1, nz=100, ngf=64):
@@ -22,7 +19,7 @@ class Generator(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(     nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
@@ -34,10 +31,10 @@ class Generator(nn.Module):
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
             # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf),
             nn.ReLU(True),
-            nn.ConvTranspose2d(    ngf,      nc, kernel_size=1, stride=1, padding=2, bias=False),
+            nn.ConvTranspose2d(ngf, nc, kernel_size=1, stride=1, padding=2, bias=False),
             nn.Tanh()
         )
 
@@ -77,7 +74,8 @@ class Discriminator(nn.Module):
             output = self.main(input)
         return output.view(-1, 1).squeeze(1)
     
-if __name__ == '__main__':    
+
+if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', required=True, help='cifar10 | lsun | mnist |imagenet | folder | lfw | fake')
@@ -118,12 +116,12 @@ if __name__ == '__main__':
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
 
     dataset = dset.MNIST(root=opt.dataroot, download=True,
-                       transform=transforms.Compose([
+                         transform=transforms.Compose([
                            transforms.Resize(opt.imageSize),
                            transforms.ToTensor(),
                            transforms.Normalize((0.5,), (0.5,)),
-                       ]))
-    nc=1
+                         ]))
+    nc = 1
 
     assert dataset
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
@@ -134,7 +132,6 @@ if __name__ == '__main__':
     nz = int(opt.nz)
     ngf = int(opt.ngf)
     ndf = int(opt.ndf)
-
 
     # custom weights initialization called on netG and netD
     def weights_init(m):
@@ -150,8 +147,6 @@ if __name__ == '__main__':
     if opt.netG != '':
         netG.load_state_dict(torch.load(opt.netG))
     print(netG)
-
-
 
     netD = Discriminator(ngpu).to(device)
     netD.apply(weights_init)
@@ -212,12 +207,12 @@ if __name__ == '__main__':
                      errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
             if i % 100 == 0:
                 vutils.save_image(real_cpu,
-                        '%s/real_samples.png' % opt.outf,
-                        normalize=True)
+                                  '%s/real_samples.png' % opt.outf,
+                                  normalize=True)
                 fake = netG(fixed_noise)
                 vutils.save_image(fake.detach(),
-                        '%s/fake_samples_epoch_%03d.png' % (opt.outf, epoch),
-                        normalize=True)
+                                  '%s/fake_samples_epoch_%03d.png' % (opt.outf, epoch),
+                                  normalize=True)
 
         # do checkpointing
         torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
