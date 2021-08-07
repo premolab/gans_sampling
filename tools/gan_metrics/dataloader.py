@@ -127,7 +127,7 @@ class LatentFixDataset(torch.utils.data.Dataset):
             trans_z = self.transform(to_np(self.denorm(z).permute(1, 2, 0)))
         if self.use_grayscale:
             trans_z = trans_z.repeat(1, 1, 3)
-        print(trans_z.shape)
+        # print(trans_z.shape)
         return trans_z
 
     def __len__(self):
