@@ -197,7 +197,8 @@ def calculate_images_statistics(z_agg_step, G,
                                                     device,
                                                     batch_size, True)
             print(
-                f"{method_name} mean inception score = {inception_score_mean}, std inception score = {inception_score_std}"
+                f"{method_name} mean inception score = {inception_score_mean}, "
+                f"std inception score = {inception_score_std}"
             )
             inception_scores_mean.append(inception_score_mean)
             inception_scores_std.append(inception_score_std)
