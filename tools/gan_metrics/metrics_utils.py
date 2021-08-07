@@ -29,7 +29,8 @@ def save_images_for_fid_fix_latent(G,
                                    latent_arr,
                                    device,
                                    random_seed,
-                                   use_generator=True):
+                                   use_generator=True,
+                                   use_grayscale=False):
     fake_list = []
     real_list = []
     torch.manual_seed(random_seed)
@@ -49,9 +50,13 @@ def save_images_for_fid_fix_latent(G,
                 fixed_noise = G(fixed_noise)
             fake_images = fixed_noise.clamp(-1, 1)
             start_ind += batch_size
-
-            fake_norm_np = ((1. + fake_images) / 2).detach().cpu().numpy()
-            real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
+            fake_norm = (1. + fake_images) / 2
+            real_norm = (1. + batch_real) / 2
+            if use_grayscale:
+                fake_norm = fake_norm.repeat(1, 3, 1, 1)
+                real_norm = real_norm.repeat(1, 3, 1, 1)
+            fake_norm_np = fake_norm.detach().cpu().numpy()
+            real_norm_np = real_norm.detach().cpu().numpy()
             fake_list.append(fake_norm_np)
             real_list.append(real_norm_np)
 
@@ -63,8 +68,14 @@ def save_images_for_fid_fix_latent(G,
             add_num_imgs = max_num_imgs - start_ind
             batch_real = batch_real[:add_num_imgs]
 
-            fake_norm_np = ((1. + fake_images) / 2).detach().cpu().numpy()
-            real_norm_np = ((1. + batch_real) / 2).detach().cpu().numpy()
+            fake_norm = (1. + fake_images) / 2
+            real_norm = (1. + batch_real) / 2
+            if use_grayscale:
+                fake_norm = fake_norm.repeat(1, 3, 1, 1)
+                real_norm = real_norm.repeat(1, 3, 1, 1)
+
+            fake_norm_np = fake_norm.detach().cpu().numpy()
+            real_norm_np = real_norm.detach().cpu().numpy()
             fake_list.append(fake_norm_np)
             real_list.append(real_norm_np)
             break
@@ -180,30 +191,33 @@ def calculate_images_statistics(z_agg_step, G,
             raise ValueError("We support now only not conditional model")
         mean = (0.485, 0.456, 0.406)
         std = (0.229, 0.224, 0.225)
+        use_grayscale = False
         if dataset == "cifar10":
             mean = (0.485, 0.456, 0.406)
             std = (0.229, 0.224, 0.225)
+            use_grayscale = False
         elif dataset == "mnist":
             mean = (0.5,)
             std = (0.5,)
+            use_grayscale = True
 
         latent_dataset = LatentFixDataset(latent_arr_transform, G,
-                                          device, nsamples, use_generator, mean=mean, std=std)
-        if dataset == "cifar10":
-            print("start to calculate inception score...")
-            start = time.time()
-            (inception_score_mean,
-             inception_score_std) = inception_score(latent_dataset,
-                                                    device,
-                                                    batch_size, True)
-            print(
-                f"{method_name} mean inception score = {inception_score_mean}, "
-                f"std inception score = {inception_score_std}"
-            )
-            inception_scores_mean.append(inception_score_mean)
-            inception_scores_std.append(inception_score_std)
-            end = round(time.time() - start, 3)
-            print(f"time for inception calculation = {end}s")
+                                          device, nsamples, use_generator, mean=mean, std=std,
+                                          use_grayscale=use_grayscale)
+        print("start to calculate inception score...")
+        start = time.time()
+        (inception_score_mean,
+         inception_score_std) = inception_score(latent_dataset,
+                                                device,
+                                                batch_size, True)
+        print(
+            f"{method_name} mean inception score = {inception_score_mean}, "
+            f"std inception score = {inception_score_std}"
+        )
+        inception_scores_mean.append(inception_score_mean)
+        inception_scores_std.append(inception_score_std)
+        end = round(time.time() - start, 3)
+        print(f"time for inception calculation = {end}s")
         if use_generator:
             latent_arr_transform = z_transform(latent_arr)
         else:

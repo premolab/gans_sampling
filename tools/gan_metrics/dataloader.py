@@ -106,7 +106,8 @@ class LatentFixDataset(torch.utils.data.Dataset):
     """Dataset for Generator
     """
     def __init__(self, latent_arr, G, device, nsamples, use_generator=True,
-                 mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+                 mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225),
+                 use_grayscale=False):
         self.latent_arr = latent_arr
         self.G = G
         self.nsamples = nsamples
@@ -116,13 +117,17 @@ class LatentFixDataset(torch.utils.data.Dataset):
         ])
         self.device = device
         self.use_generator = use_generator
+        self.use_grayscale = use_grayscale
 
     def __getitem__(self, index):
         z = to_var(self.latent_arr[index], self.device)
         if self.use_generator:
-            return self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
+            trans_z = self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
         else:
-            return self.transform(to_np(self.denorm(z).permute(1, 2, 0)))
+            trans_z = self.transform(to_np(self.denorm(z).permute(1, 2, 0)))
+        if self.use_grayscale:
+            trans_z = trans_z.repeat(1, 1, 3)
+        return trans_z
 
     def __len__(self):
         return self.nsamples
