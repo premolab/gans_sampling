@@ -5,21 +5,18 @@ import datetime
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 import torch.optim as optim
-import torchvision.transforms as transforms
 
-from dataloader import GenDataset
+from gans_sampling.tools.gan_metrics.dataloader import GenDataset
 from logger import Logger
 
 import sys
 sys.path.append("../sampling_utils")
 
 from metrics import inception_score
-from general_utils import (print_network, 
+from general_utils import (print_network,
                            init_params_xavier,
-                           to_var,
-                           to_np) 
+                           to_var)
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
