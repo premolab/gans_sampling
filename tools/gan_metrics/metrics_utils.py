@@ -236,15 +236,15 @@ def calculate_images_statistics(z_agg_step, G,
                                        latent_arr_transform,
                                        device,
                                        random_seed,
-                                       use_generator)
+                                       use_generator,
+                                       use_grayscale=use_grayscale)
         paths_to_test_method = [name_real_test, name_fake_test]
 
         results_fid_test = calculate_fid_given_paths(paths_to_test_method,
                                                      batch_size_resnet,
                                                      cuda,
                                                      dim_resnet,
-                                                     model_type=model_type,
-                                                     use_grayscale=use_grayscale)
+                                                     model_type=model_type)
         results_fid_test = results_fid_test[0]
 
         mean_fid_test = results_fid_test[1]
@@ -268,14 +268,14 @@ def calculate_images_statistics(z_agg_step, G,
                                        latent_arr_transform,
                                        device,
                                        random_seed,
-                                       use_generator)
+                                       use_generator,
+                                       use_grayscale=use_grayscale)
         paths_to_train_method = [name_real_train, name_fake_train]
         results_fid_train = calculate_fid_given_paths(paths_to_train_method,
                                                       batch_size_resnet,
                                                       cuda,
                                                       dim_resnet,
-                                                      model_type=,
-                                                      use_grayscale=use_grayscale)
+                                                      model_type=model_type)
         results_fid_train = results_fid_train[0]
 
         mean_fid_train = results_fid_train[1]
