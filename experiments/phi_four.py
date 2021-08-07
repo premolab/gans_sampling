@@ -137,7 +137,7 @@ def main(config):
             flow_samples.append(x_gen)
 
             #prop = proposal.sample((10,))
-            prop = torch.ones(10, dim)
+            prop = torch.zeros(10, dim)
             x_gen = mcmc(prop, target, proposal, flow=flow, n_steps=1) #10)
             if isinstance(x_gen, Tuple):
                 x_gen = x_gen[0]

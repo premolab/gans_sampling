@@ -60,7 +60,7 @@ methods:
   #     bernoulli_prob_corr: 0.5
   #     mala_steps: 1
 
-  "FlEx$^2$MCMC":
+  "FlEx$^2$MCMC, N=10, w corr":
     mcmc_class: Ex2MCMC
     # ess_rar: 1
     params:
@@ -69,6 +69,22 @@ methods:
       adapt_stepsize: True
       corr_coef: 0.9 #0.9
       bernoulli_prob_corr: 0.5 #0.5
+      mala_steps: 10
+    flow:
+      num_flows: 1
+      lr: 0.001
+      batch_size: 100
+      n_steps: 1000 #1000 #1000
+      #burn_in_steps: 0 #10 #1000
+      start_optim: 0 #1000
+
+  "FlEx$^2$MCMC, N=10, w/o corr":
+    mcmc_class: Ex2MCMC
+    # ess_rar: 1
+    params:
+      N: 10
+      grad_step: 0.001 #0.01
+      adapt_stepsize: True
       mala_steps: 10
     flow:
       num_flows: 1
@@ -93,13 +109,34 @@ methods:
   #     #burn_in_steps: 0 #10 #1000 #1000
   #     start_optim: 0 #1000
 
-  AugmentedULA:
+  "AugmentedMALA\n(FlEx$^2$MCMC, N=2, w/o corr)":
     mcmc_class: Ex2MCMC
     # ess_rar: 1
     params:
-      grad_step: 0.0005 #0.01
+      grad_step: 0.001 #0.01
+      adapt_stepsize: True
+      #grad_step: 0.0005 #0.01
       mala_steps: 10 #0
       n_steps: 1
+    flow:
+      num_flows: 1
+      lr: 0.001 #0.001
+      batch_size: 100
+      n_steps: 1000 #1000 #1000 #000
+      #burn_in_steps: 0 #10 #1000 #1000
+      start_optim: 0 #1000
+
+  "AugmentedMALA w corr":
+    mcmc_class: Ex2MCMC
+    # ess_rar: 1
+    params:
+      grad_step: 0.001 #0.01
+      adapt_stepsize: True
+      #grad_step: 0.0005 #0.01
+      mala_steps: 10 #0
+      n_steps: 1
+      corr_coef: 0.9 #0.9
+      bernoulli_prob_corr: 0.5 #0.5
     flow:
       num_flows: 1
       lr: 0.001 #0.001
