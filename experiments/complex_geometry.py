@@ -123,25 +123,25 @@ def sample_nuts(target, proposal, num_samples=1000):
     return samples_true
 
 
-def plot_metrics(metrics, ndims, savepath=None, scale=1.):
+def plot_metrics(metrics, ndims, savepath=None, scale=1., colors=None):
     axs_names = ['Sliced TV', 'ESS', 'Euclidean EMD'] # (on scaled data)']
     ncols = len(axs_names)
     fig, axs = plt.subplots(ncols=ncols, figsize=(5*ncols + ncols, 5))
     
-    for name, res in metrics.items():
+    for (name, res), color in zip(metrics.items(), colors):
         for k, v in res.items():
             res[k] = np.array(v)
 
         arr = res['tv_mean']
-        axs[0].plot(ndims, arr, label=name, marker='o')
+        axs[0].plot(ndims, arr, label=name, marker='o', color=color)
 
         axs[0].fill_between(ndims, res['tv_mean'] - 1.96 * res['tv_conf_sigma'], res['tv_mean'] + 1.96 * res['tv_conf_sigma'], alpha=0.2)
 
         arr = res['ess']
-        axs[1].plot(ndims, arr, label=name, marker='o')
+        axs[1].plot(ndims, arr, label=name, marker='o', color=color)
 
         arr = res['emd']
-        axs[2].plot(ndims, arr, label=name, marker='o')
+        axs[2].plot(ndims, arr, label=name, marker='o', color=color)
 
     for ax, name in zip(axs, axs_names):
         ax.grid()
@@ -159,6 +159,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=str)
     parser.add_argument('--dist_config', type=str)
+    parser.add_argument('--result_path', type=str)
     # parser.add_argument('--dims', type=int, nargs='+')
     # parser.add_argument
     args = parser.parse_args()
@@ -166,91 +167,123 @@ def parse_arguments():
     return args
 
 
-def main(config):
+def main(config, run=True):
     device = config.device
     method_metric_dict = defaultdict(lambda : defaultdict(list))
 
-    for dim in config.dims:
-        dist_class = eval(config.dist_class)
-        target = dist_class(dim=dim, device=device, **config.dist_params.dict)
+    if run:
+        for dim in config.dims:
+            dist_class = eval(config.dist_class)
+            target = dist_class(dim=dim, device=device, **config.dist_params.dict)
 
-        loc_proposal = torch.zeros(dim).to(device)
-        scale_proposal = config.scale_proposal * torch.ones(dim).to(device)
-        proposal = IndependentNormal(loc=loc_proposal, scale=scale_proposal, device=device)
+            loc_proposal = torch.zeros(dim).to(device)
+            scale_proposal = config.scale_proposal * torch.ones(dim).to(device)
+            proposal = IndependentNormal(loc=loc_proposal, scale=scale_proposal, device=device)
 
-        print('========== NUTS ==========')
-        samples_true = sample_nuts(target, proposal, num_samples=config.trunc_chain_len)
-        samples = []
-        names = []
+            print('========== NUTS ==========')
+            samples_true = sample_nuts(target, proposal, num_samples=config.trunc_chain_len)
+            samples = []
+            names = []
+            colors = []
+            for method_name, info in config.methods.items():
+                colors.append(info.color)
+                names.append(method_name)
+                print(f'========== {method_name} =========== ')
+                params = info.params 
+                try:
+                    mcmc_class = eval(info.mcmc_class)
+                except KeyError:
+                    print('Can\'t understand class')
+
+                params = params.dict
+                if 'lr' in params:
+                    params['lr'] = eval(params['lr'])
+
+                mcmc = mcmc_class(**params, dim=dim)
+
+                if 'flow' in info.dict.keys():
+                    verbose = mcmc.verbose
+                    mcmc.verbose = False
+                    flow = RNVP(info.flow.num_flows, dim=dim)
+
+                    flow_mcmc = FlowMCMC(target, proposal, flow, mcmc, batch_size=info.flow.batch_size, lr=info.flow.lr)
+                    flow.train()
+                    out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
+                    assert not torch.isnan(next(flow.parameters())[0, 0]).item()
+
+                    flow.eval()
+                    mcmc.flow = flow
+                    mcmc.verbose = verbose
+
+                    if 'figpath' in config.dict:
+                        fig = plot_learned_density(flow, proposal, xlim=target.xlim, ylim=target.ylim)
+                        plt.savefig(Path(config.figpath, f'flow_{config.dist}_{dim}.pdf'))
+
+
+                start = proposal.sample((1,))
+
+                #s = time.time()
+                out = mcmc(start, target, proposal, n_steps=info.n_steps)
+                #e = time.time()
+                #elapsed = (e - s)
+                if isinstance(out, tuple):
+                    sample = out[0]
+                else:
+                    sample = out
+
+                sample = np.array([_.detach().numpy() for _ in sample]).reshape(-1, dim)
+
+                metrics = compute_metrics(samples_true, sample, name=method_name, trunc_chain_len=config.trunc_chain_len, ess_rar=info.ess_rar)
+                for k, v in metrics.items():
+                    method_metric_dict[method_name][k] = list(method_metric_dict[method_name][k])
+                    method_metric_dict[method_name][k].append(v)
+
+                sample = sample[-config.trunc_chain_len:]
+                samples.append(sample)
+
+        sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
+
+        if 'respath' in config.dict:
+            method_metric_dict = dict(method_metric_dict)
+            resdir = Path(config.respath, config.dist)
+            resdir.mkdir(parents=True, exist_ok=True)
+            respath = Path(resdir, f'{sub}.npy')
+            pickle.dump(method_metric_dict, respath.open('wb'))
+            #method_metric_dict = pickle.load(respath.open('rb'))
+
+        if 'figpath' in config.dict:
+            SMALL_SIZE = 18 #8
+            MEDIUM_SIZE = 20 #10
+            BIGGER_SIZE = 20 #12
+
+            plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+            plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
+            plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+            plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+            plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+            plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
+            plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+            fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
+            for ax, sample in zip(axs, samples):
+                _, xlim, ylim = target.plot_2d(fig, ax)
+
+                ax.scatter(sample[:, 0], sample[:, 1], alpha=0.3, s=2, color='black')
+                # plt.axis('equal')
+                ax.set_xlim(*xlim)
+                ax.set_ylim(*ylim)
+            
+            plt.savefig(Path(config.figpath, f'{config.dist}_proj.pdf'))
+    else:
+        method_metric_dict = pickle.load(Path(config.respath).open('rb'))
+        colors = []
         for method_name, info in config.methods.items():
-            names.append(method_name)
-            print(f'========== {method_name} =========== ')
-            params = info.params 
-            try:
-                mcmc_class = eval(info.mcmc_class)
-            except KeyError:
-                print('Can\'t understand class')
-
-            params = params.dict
-            if 'lr' in params:
-                params['lr'] = eval(params['lr'])
-
-            mcmc = mcmc_class(**params, dim=dim)
-
-            if 'flow' in info.dict.keys():
-                verbose = mcmc.verbose
-                mcmc.verbose = False
-                flow = RNVP(info.flow.num_flows, dim=dim)
-
-                flow_mcmc = FlowMCMC(target, proposal, flow, mcmc, batch_size=info.flow.batch_size, lr=info.flow.lr)
-                flow.train()
-                out_samples = flow_mcmc.train(n_steps=info.flow.n_steps)
-                assert not torch.isnan(next(flow.parameters())[0, 0]).item()
-
-                flow.eval()
-                mcmc.flow = flow
-                mcmc.verbose = verbose
-
-                if 'figpath' in config.dict:
-                    fig = plot_learned_density(flow, proposal, xlim=target.xlim, ylim=target.ylim)
-                    plt.savefig(Path(config.figpath, f'flow_{config.dist}_{dim}.pdf'))
-
-
-            start = proposal.sample((1,))
-
-            #s = time.time()
-            out = mcmc(start, target, proposal, n_steps=info.n_steps)
-            #e = time.time()
-            #elapsed = (e - s)
-            if isinstance(out, tuple):
-                sample = out[0]
-            else:
-                sample = out
-
-            sample = np.array([_.detach().numpy() for _ in sample]).reshape(-1, dim)
-
-            metrics = compute_metrics(samples_true, sample, name=method_name, trunc_chain_len=config.trunc_chain_len, ess_rar=info.ess_rar)
-            for k, v in metrics.items():
-                method_metric_dict[method_name][k] = list(method_metric_dict[method_name][k])
-                method_metric_dict[method_name][k].append(v)
-
-            sample = sample[-config.trunc_chain_len:]
-            samples.append(sample)
-
-    sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
-
-    if 'respath' in config.dict:
-        method_metric_dict = dict(method_metric_dict)
-        resdir = Path(config.respath, config.dist)
-        resdir.mkdir(parents=True, exist_ok=True)
-        respath = Path(resdir, f'{sub}.npy')
-        pickle.dump(method_metric_dict, respath.open('wb'))
-        #method_metric_dict = pickle.load(respath.open('rb'))
+            colors.append(info.color)
 
     if 'figpath' in config.dict:
-        SMALL_SIZE = 12 #8
-        MEDIUM_SIZE = 15 #10
-        BIGGER_SIZE = 15 #12
+        SMALL_SIZE = 18 #8
+        MEDIUM_SIZE = 20 #10
+        BIGGER_SIZE = 20 #12
 
         plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
         plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
@@ -260,18 +293,7 @@ def main(config):
         plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
         plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
-        plot_metrics(method_metric_dict, config.dims, savepath=Path(config.figpath, f'{config.dist}_metrics.pdf'))
-
-        fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
-        for ax, sample in zip(axs, samples):
-            _, xlim, ylim = target.plot_2d(fig, ax)
-
-            ax.scatter(sample[:, 0], sample[:, 1], alpha=0.3, s=2, color='black')
-            # plt.axis('equal')
-            ax.set_xlim(*xlim)
-            ax.set_ylim(*ylim)
-        
-        plt.savefig(Path(config.figpath, f'{config.dist}_proj.pdf'))
+        plot_metrics(method_metric_dict, config.dims, savepath=Path(config.figpath, f'{config.dist}_metrics.pdf'), colors=colors)
         #plt.savefig(Path(config.figpath, '{config.dist}_proj.png'))
 
 
@@ -293,4 +315,10 @@ if __name__ == "__main__":
     config.dist_class = dist_config.dist_class
     config.dist_params = dist_config.params
 
-    main(config)
+    if args.result_path is not None:
+        run = False
+        config.respath = args.result_path
+    else:
+        run = True
+
+    main(config, run)

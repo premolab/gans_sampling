@@ -2,6 +2,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import datetime
+import seaborn as sns
 
 import torch
 
@@ -615,12 +616,14 @@ def epoch_visualization(X_train,
                                               port_to_remote=port_to_remote)
 
 
-def plot_chain_metrics(evols, every=50, name=None, savepath=None, sigma=0.05, std=True):
+def plot_chain_metrics(evols, every=50, colors=None, name=None, savepath=None, sigma=0.05, std=True):
     instance = list(evols.values())[0]
     keys = ['mode_std', 'hqr', 'jsd', 'n_found_modes', 'emd']
     ncols = int(np.sum([int(len(instance[k]) > 0) for k in keys]))
     
     fig, axs = plt.subplots(ncols=ncols, nrows=1, figsize=(6*ncols, 6))
+    # fig, axs = plt.subplots(ncols=3, nrows=2, figsize=(6*3, 12))#ncols, nrows=1, figsize=(6*ncols, 6))
+    # axs = axs.flatten()
 
     if name is not None:
         fig.suptitle(name)
@@ -666,16 +669,20 @@ def plot_chain_metrics(evols, every=50, name=None, savepath=None, sigma=0.05, st
     # emd_ax.set_ylabel('EMD')
     # emd_ax.set_title('Earth Mover\'s Distance')
 
-    for label, evol in evols.items():
+    for i, (label, evol) in enumerate(evols.items()):
+        if colors is not None:
+            color = colors[i]
+        else:
+            color = sns.color_palette()[i]
         k = 0
         def plot_evol(ax, ev, label):
             if std is True:
                 mean_arr, std_arr = ev
-                ax.plot(np.arange(1, len(mean_arr) + 1) * every, mean_arr, label=label, marker='o')
+                ax.plot(np.arange(1, len(mean_arr) + 1) * every, mean_arr, label=label, marker='o', color=color)
                 ax.fill_between(np.arange(1, len(mean_arr) + 1) * every, mean_arr - 1.96 * std_arr, mean_arr + 1.96 * std_arr, alpha=0.2)
             else:
                 mean_arr = ev
-                ax.plot(np.arange(1, len(mean_arr) + 1) * every, mean_arr, label=label, marker='o')
+                ax.plot(np.arange(1, len(mean_arr) + 1) * every, mean_arr, label=label, marker='o', color=color)
         
         for i, key in enumerate(keys):
             if len(instance[key]) > 0:
@@ -700,9 +707,10 @@ def plot_chain_metrics(evols, every=50, name=None, savepath=None, sigma=0.05, st
     # else:
     #     emd_ax.grid()
     #     emd_ax.legend()
+    # fig.delaxes(axs[-1])
 
     fig.tight_layout()
 
     if savepath is not None:
         plt.savefig(savepath)
-    plt.show()
+    #plt.show()

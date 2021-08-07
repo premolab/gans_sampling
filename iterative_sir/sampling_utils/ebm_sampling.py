@@ -159,6 +159,19 @@ def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
 langevin_sampling = sampling_from_dynamics(langevin_dynamics)
 
 
+class ULA(AbstractMCMC):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.device =kwargs.get('device', 'cpu')
+        self.grad_step = kwargs.get('grad_step', 1e-2)
+        self.noise_scale = kwargs.get('noise_scale', (2 * self.grad_step)**.5)
+
+    def __call__(self, z, target, proposal, n_steps, grad_step=None, noise_scale=None):
+        grad_step = grad_step if grad_step is not None else self.grad_step
+        noise_scale = noise_scale if noise_scale is not None else self.noise_scale
+        return langevin_dynamics(z, target, proposal, n_steps, grad_step, noise_scale)
+
+
 def heuristics_step_size(mean_acceptance, target_acceptance, stepsize,
                          factor=1.05, tol=0.03):
     if mean_acceptance - target_acceptance > tol:
@@ -254,25 +267,33 @@ class MALA(AbstractMCMC):
         if self.adapt_stepsize:
             self.mala_transition.adapt_grad_step = self.grad_step
             self.mala_transition.adapt_sigma = self.noise_scale
+        self.verbose = kwargs.get('verbose', True)
+        self.beta = kwargs.get('beta', 1.0) #inverse temperature
         
     #@increment_steps
     #@adapt_stepsize_dec
-    def __call__(self, z, target, proposal, n_steps, grad_step=None, noise_scale=None, adapt_stepsize=None):
+    def __call__(self, z, target, proposal, n_steps, grad_step=None, noise_scale=None, beta=None, adapt_stepsize=None, verbose=None):
         adapt_stepsize = self.adapt_stepsize if adapt_stepsize is None else adapt_stepsize
         grad_step = self.grad_step if grad_step is None else grad_step
         noise_scale = self.noise_scale if noise_scale is None else noise_scale
+        verbose = self.verbose if verbose is None else verbose
+        beta = self.beta if beta is None else beta
 
         zs = [z.clone().detach()]
         batch_size = z.shape[0]
         acceptance = torch.zeros(batch_size)
-        for _ in range(n_steps):
-            energy, grad = grad_energy(z, target, x=None)
-            z_new, _, _, mask = self.mala_transition(z, energy, grad, 
+
+        range_gen = trange if verbose else range
+
+        for _ in range_gen(n_steps):
+            energy, grad = grad_energy(z, target)
+            z, _, _, mask = self.mala_transition(z, energy, grad, 
                                                             grad_step=grad_step, 
                                                             sigma=noise_scale, 
+                                                            beta=beta,
                                                             target=target, 
                                                             adapt_stepsize=adapt_stepsize)
-            zs.append(z_new.detach().clone())
+            zs.append(z.detach().clone())
             acceptance += mask.float() / n_steps
 
         return zs, acceptance
@@ -391,11 +412,26 @@ def xtry_langevin_dynamics(y, target, proposal, n_steps, grad_step, eps_scale, N
     return y_arr
 
 
+class MHKernel:
+    @staticmethod
+    def log_prob(log_pi1, log_pi2, log_transition_forward, log_transition_backward):
+        return (log_pi2 + log_transition_backward) - (log_pi1 + log_transition_forward)
+
+    @staticmethod
+    def get_mask(log_pi1, log_pi2, log_transition_forward, log_transition_backward):
+        batch_size = log_pi1.shape[0]
+        device = log_pi1.device
+        acc_log_prob = MHKernel.log_prob(log_pi1, log_pi2, log_transition_forward, log_transition_backward)
+        generate_uniform_var = torch.rand([batch_size], device=device)
+        log_generate_uniform_var = torch.log(generate_uniform_var)
+        mask = log_generate_uniform_var < acc_log_prob
+        return mask
+
+    
 class MALATransition(object):
     def __init__(self, z_dim, device):
         self.device = device
         self.z_dim = z_dim
-        self.uniform = Uniform(low=0.0, high=1.0)
 
         loc = torch.zeros(z_dim).to(device)
         scale = torch.ones(z_dim).to(device)
@@ -426,12 +462,32 @@ class MALATransition(object):
                                                                       grad_new,
                                                                       beta * grad_step,
                                                                       sigma)
-        log_prob = self.get_mh_kernel_log_prob(-beta * energy,
+        log_prob = MHKernel.log_prob(-beta * energy,
                                                -beta * energy_new,
                                                log_transition_forward,
                                                log_transition_backward)
+        
         return log_prob, energy_new, grad_new
 
+    def get_mask(self, z, z_new, energy, grad, grad_step,
+                          sigma, target=None, beta=1.0):
+
+        energy_new, grad_new = grad_energy(z_new, target, x=None)
+        log_transition_forward = self.get_langevin_transition_kernel(z, z_new,
+                                                                     grad,
+                                                                     beta * grad_step,
+                                                                     sigma)
+        log_transition_backward = self.get_langevin_transition_kernel(z_new, z,
+                                                                      grad_new,
+                                                                      beta * grad_step,
+                                                                      sigma)
+
+        mask = MHKernel.get_mask(-beta * energy,
+                                               -beta * energy_new,
+                                               log_transition_forward,
+                                               log_transition_backward)
+        return mask, energy_new, grad_new
+        
     def do_transition_step(self, z, z_new, energy, grad, grad_step, sigma,
                            target=None, beta=1.0, adapt_stepsize=False):
         # if adapt_stepsize is True:
@@ -439,17 +495,24 @@ class MALATransition(object):
         #         grad_step = self.adapt_grad_step
         #         sigma = self.adapt_sigma
 
-        acc_log_prob, energy_new, grad_new = self.compute_log_probs(z, z_new,
-                                                                    energy,
-                                                                    grad,
-                                                                    grad_step,
-                                                                    sigma,
-                                                                    target,
-                                                                    beta)
+        # acc_log_prob, energy_new, grad_new = self.compute_log_probs(z, z_new,
+        #                                                             energy,
+        #                                                             grad,
+        #                                                             grad_step,
+        #                                                             sigma,
+        #                                                             target,
+        #                                                             beta)
 
-        generate_uniform_var = self.uniform.sample([z.shape[0]]).to(z.device)
-        log_generate_uniform_var = torch.log(generate_uniform_var)
-        mask = log_generate_uniform_var < acc_log_prob
+        # generate_uniform_var = self.uniform.sample([z.shape[0]]).to(z.device)
+        # log_generate_uniform_var = torch.log(generate_uniform_var)
+        # mask = log_generate_uniform_var < acc_log_prob
+        mask, energy_new, grad_new = self.get_mask(z, z_new,
+                                energy,
+                                grad,
+                                grad_step,
+                                sigma,
+                                target,
+                                beta)
 
         with torch.no_grad():
             z[mask] = z_new[mask].detach().clone()
@@ -472,7 +535,7 @@ class MALATransition(object):
 
     def __call__(self, z, energy, grad, grad_step=None, sigma=None,
                            target=None, beta=1.0, adapt_stepsize=False):
-        if adapt_stepsize is True:
+        if adapt_stepsize is True or grad_step is None:
             if self.adapt_grad_step != 0 and self.adapt_sigma != 0:
                 grad_step = self.adapt_grad_step
                 sigma = self.adapt_sigma
@@ -481,16 +544,6 @@ class MALATransition(object):
         z_new, energy, grad, mask = self.do_transition_step(z, z_new, energy, grad, grad_step, sigma,
                            target=target, beta=beta, adapt_stepsize=adapt_stepsize)
         return z_new, energy, grad, mask
-
-        
-# class CiterMALATransition(MALATransition):
-#     # NOT NEEDED
-#     def get_langevin_transition_kernel(self, z1, z2, grad, grad_step, sigma=None):
-#         if sigma is None:
-#             sigma = (2 * grad_step) ** .5
-#         loc = z2 - ((1 - grad_step) * z1 - grad_step * grad)
-#         log_prob = self.stand_normal.log_prob(loc/sigma)
-#         return log_prob
 
 
 def tempered_transitions_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, betas):

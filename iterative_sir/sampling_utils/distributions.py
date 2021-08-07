@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.sparse import dok
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -15,7 +14,7 @@ from .logistic_regression import ClassificationDataset
 
 
 torchType = torch.float32
-class Distribution(ABC): #nn.Module):
+class Distribution(ABC):
     """
     Base class for a custom target distribution
     """
@@ -195,7 +194,7 @@ def init_independent_normal(scale, n_dim, device, loc = 0.0):
     target_args.device = device
     target_args.loc = loc
     target_args.scale = scale
-    target = IndependentNormal(target_args)
+    target = IndependentNormal(**target_args)
     return target
 
 def init_independent_normal_scale(scales, locs, device):
@@ -203,7 +202,7 @@ def init_independent_normal_scale(scales, locs, device):
     target_args.device = device
     target_args.loc = locs.to(device)
     target_args.scale = scales.to(device)
-    target = IndependentNormal(target_args)
+    target = IndependentNormal(**target_args)
     return target
 
 
@@ -386,7 +385,6 @@ class BayesianLogRegression(Distribution):
         prod = torch.clamp(torch.matmul(x, theta.transpose(0,1)), min=-max_val)
         #P = 1. / (1. + torch.exp(-prod))
         P = torch.sigmoid(prod)
-        #print(P.max())
         mask = torch.isnan(P)
         #P = P[mask]
         #P[mask] = 1e-5
@@ -454,6 +452,7 @@ class GMM(nn.Module):
             (self.n_samples, self.n_components, self.dim)).double())
         self.means = nn.Parameter(torch.normal(0.0, 2 * (0.5*self.log_vars).exp()))
 
+
 class GaussianMixtureModel(Distribution, nn.Module):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -512,3 +511,85 @@ class GaussianMixtureModel(Distribution, nn.Module):
             xs = torch.normal(mus[zs], sigmas[zs])
 
         return xs
+
+
+class PhiFour(Distribution):
+    """
+    Borrowed from oficial implementation: https://github.com/marylou-gabrie/flonaco
+    Original paper: https://arxiv.org/pdf/2105.12603.pdf
+    """
+    def __init__(self, a, b, dim_grid, dim_phys=1,
+                 beta=1,
+                 bc=('dirichlet', 0),
+                 tilt=None,
+                 dtype=torch.float32, 
+                 device='cpu'):
+        """
+        Class to handle operations around Stochastic Allen-Cahn model
+        Args:
+            a: coupling term coef
+            b: local field coef
+            dim_grid: grid size along one physical dimension
+            dim_phys: number of dimensions of the physical grid
+            beta: inverse temperature
+            tilt: None or {"val":0.7, "lambda":1} - mean value + Lagrange param
+        """
+        super().__init__(device=device)
+        self.device = device
+
+        self.a = a
+        self.b = b
+        self.beta = beta
+        self.dim_grid = dim_grid
+        self.dim_phys = dim_phys
+        self.sum_dims = tuple(i + 1 for i in range(dim_phys))
+
+        self.bc = bc
+        self.tilt = tilt
+
+    def init_field(self, n_or_values):
+        if isinstance(n_or_values, int):
+            x = torch.rand((n_or_values,) + (self.dim_grid,) * self.dim_phys)
+            x = x * 2 - 1
+        else:
+            x = n_or_values
+        return x
+
+    def V(self, x):
+        coef = self.a * self.dim_grid
+        V = ((1 - x ** 2) ** 2 / 4 + self.b * x).sum(self.sum_dims) / coef
+        if self.tilt is not None: 
+            tilt = (self.tilt['val'] - x.mean(self.sum_dims)) ** 2 
+            tilt = self.tilt["lambda"] * tilt / (4 * self.dim_grid)
+            V += tilt
+        return V
+
+    def log_prob(self, x):
+        # Does not include the temperature! need to be explicitely added in Gibbs factor
+
+        if self.bc[0] == 'dirichlet':
+            x_ = F.pad(input=x, pad=(1,) * (2*self.dim_phys), mode='constant',
+                      value=self.bc[1])
+        else:
+            raise NotImplementedError("Only dirichlet BC implemeted")
+
+        grad_term = ((x_[:, 1:, ...] - x_[:, :-1, ...]) ** 2 / 2).sum(self.sum_dims)
+        if self.dim_phys == 2:
+            grad_term += ((x_[:, :, 1:] - x_[:, :, :-1]) ** 2 / 2).sum(self.sum_dims)
+        
+        coef = self.a * self.dim_grid
+        return -(grad_term * coef + self.V(x))
+
+    def U_coupling_per_site(self, x):
+        """
+        return the (\nabla phi) ** 2 to be used in direct computation
+        """
+        assert self.dim_phys == 1
+        if self.bc[0] == 'dirichlet':
+            x_ = F.pad(input=x, pad=(1,) * (2*self.dim_phys), mode='constant',
+                      value=self.bc[1])
+        else:
+            raise NotImplementedError("Only dirichlet BC implemeted")
+
+        return ((x_[:, 1:] - x_[:, :-1]) ** 2 / 2) * self.a * self.dim_grid
+        

@@ -2,6 +2,7 @@ from dataclasses import fields
 import numpy as np
 import time
 import random
+from seaborn.miscplot import palplot
 from tqdm import tqdm
 from functools import partial
 import matplotlib.pyplot as plt
@@ -27,6 +28,8 @@ from iterative_sir.sampling_utils.metrics import ESS, acl_spectrum, MetricsTrack
 
 from utils import DotConfig
 
+sns.set_theme(style="ticks", palette="deep")
+
 
 def classification(theta, x, y):
     #pdb.set_trace()
@@ -49,29 +52,28 @@ def compute_average_mean_posterior(samples, dataset):
     return ll_post
 
 
-def plot(res, method_names):
-    sns.set_theme(style="ticks", palette="deep")
-
+def plot(res, method_names, colors=None):
     fig = plt.figure(figsize = (15, 10))
 
     SMALL_SIZE = 15 #8
-    MEDIUM_SIZE = 15 #10
-    BIGGER_SIZE = 18 #12
+    MEDIUM_SIZE = 20 #10
+    BIGGER_SIZE = 20 #12
 
-    plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    plt.rc('font', size=MEDIUM_SIZE)          # controls default text sizes
     plt.rc('axes', titlesize=BIGGER_SIZE)     # fontsize of the axes title
     plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
-    plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
-    plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+    plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
+    plt.rc('ytick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
     plt.rc('legend', fontsize=MEDIUM_SIZE)    # legend fontsize
     plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
     #sns.set_style("darkgrid", {"axes.facecolor": ".9"})
     #sns.violinplot(data = ll_post_plot)
-    sns.boxplot(data=res) #, s=6)
+    palette = colors #{name: c for name, c in zip(method_names, colors)}
+    sns.boxplot(data=res, palette=palette) #, s=6)
 
-    plt.title('Average $\hat{p}(y\mid x)$', fontsize = 22)
-    plt.xticks(np.arange(len(method_names)), method_names, fontsize = 20 )
+    plt.title('Average $\hat{p}(y\mid x, \mathcal{D})$')#, fontsize = 22)
+    plt.xticks(np.arange(len(method_names)), method_names)#, fontsize = 20 )
     plt.grid()
 
     return fig
@@ -99,10 +101,12 @@ def main(dataset, config):
 
     metrics = MetricsTracker(fields=['method', 'ess', 'ess_per_s', 'time'])
     samples = []
+    colors = []
 
     for method_name, info in config.methods.items():
         print(f'========= {method_name} ========== ')
         params = info.params #['params']
+        colors.append(info.color)
         try:
             mcmc_class = eval(info.mcmc_class)
             #print(mcmc_class)
@@ -123,7 +127,7 @@ def main(dataset, config):
 
             flow_mcmc = FlowMCMC(target, proposal, flow, mcmc, batch_size=info.flow.batch_size, lr=info.flow.lr)
             flow.train()
-            out_samples = flow_mcmc.train(n_steps=info.flow.n_steps)
+            out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
             #
             assert not torch.isnan(next(flow.parameters())[0, 0]).item()
 
@@ -169,7 +173,7 @@ def main(dataset, config):
         np.save(respath.open('wb'), mean_post)
 
     if 'figpath' in config.dict:
-        fig = plot(mean_post, metrics.stor.method)
+        fig = plot(mean_post, metrics.stor.method, colors)
         plt.savefig(Path(config.figpath, f'bayesian_lr_{config.dataset}.pdf'))
 
 

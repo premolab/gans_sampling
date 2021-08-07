@@ -1,4 +1,6 @@
+from re import M
 import torch
+from torch import nn
 #from scipy.stats import gamma, invgamma
 
 
@@ -11,7 +13,7 @@ def get_optimizer(parameters, optimizer = "Adam", lr = 1e-3, weight_decay=1e-5):
 
 def get_loss(loss):
     if loss == "mix_kl":
-        return mix_kl
+        return MixKLLoss
     if loss == "forward_kl":
         return forward_kl
     if loss == "backward_kl":
@@ -21,7 +23,6 @@ def get_loss(loss):
 
 ###Write here f divergence
 
-#write here forward/backward KL
 
 def entropy(target, proposal, flow, y, acc_rate=1.):
     u = proposal.sample(y.shape[:-1])
@@ -63,7 +64,7 @@ def forward_kl(target, proposal, flow, y):
     ###PROPOSAL INITIAL DISTR HERE
     y_ = y.detach().requires_grad_()
     u, minus_log_jac = flow.inverse(y_)
-    est = target(y) - proposal(u) - minus_log_jac
+    est = target(y_) - proposal(u) - minus_log_jac
     grad_est = - proposal(u) - minus_log_jac
     return est.mean(), grad_est.mean()
 
@@ -75,7 +76,7 @@ def backward_kl(target, proposal, flow, y):
     return est.mean(), grad_est.mean()
 
 
-def mix_kl(target, proposal, flow, y, acc_rate=1., alpha= .99, beta=.1): #.2):
+def mix_kl(target, proposal, flow, y, acc_rate=1., alpha= .99, beta=.1, gamma=None): #.2):
     est_f, grad_est_f = forward_kl(target, proposal, flow, y)
     est_b, grad_est_b = backward_kl(target, proposal, flow, y)
     entr, grad_est_entr = entropy(target, proposal, flow, y, acc_rate=acc_rate)
@@ -85,6 +86,33 @@ def mix_kl(target, proposal, flow, y, acc_rate=1., alpha= .99, beta=.1): #.2):
     if torch.isnan(grad_est_b).item():
         grad_est_b = 0
 
-    return (alpha * est_f + (1. - alpha) * est_b  + alpha * grad_imp_f, # - beta * entr, 
-            alpha * grad_est_f + (1. - alpha) * grad_est_b + alpha * grad_imp_f) # - beta * grad_est_entr)
+    if gamma is None:
+        gamma = alpha
 
+    return (alpha * est_f + (1. - alpha) * est_b  + gamma * grad_imp_f, # - beta * entr, 
+            alpha * grad_est_f + (1. - alpha) * grad_est_b + gamma * grad_imp_f) # - beta * grad_est_entr)
+
+
+class MixKLLoss(nn.Module):
+    def __init__(self, target, proposal, flow, alpha=.99, beta=.1, gamma=.99):#.2):#.99):
+        super().__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.flow = flow
+        self.target = target
+        self.proposal = proposal
+
+    def forward(self, y, acc_rate=1., alpha=None, beta=None, gamma=None):
+        alpha = alpha if alpha is not None else self.alpha
+        beta = beta if beta is not None else self.beta
+        gamma = gamma if gamma is not None else self.gamma
+
+        return mix_kl(self.target, 
+                    self.proposal, 
+                    self.flow, 
+                    y, 
+                    acc_rate=acc_rate, 
+                    alpha=alpha, 
+                    beta=beta, 
+                    gamma=gamma)

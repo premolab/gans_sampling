@@ -9,6 +9,7 @@ methods:
     mcmc_class: CISIR
     params:
       N: 5
+    color: "tab:blue"
 
   CISIR:
     mcmc_class: CISIR
@@ -16,12 +17,14 @@ methods:
       N: 5
       corr_coef: 0.9
       bernoulli_prob_corr: 0.5
+    color: "tab:cyan"
 
   MALA:
     mcmc_class: MALA
     params:
       grad_step: 0.01
       adapt_stepsize: True
+    color: "tab:green"
 
   "Ex$^2$MCMC \n w/o corr":
     mcmc_class: Ex2MCMC
@@ -30,6 +33,7 @@ methods:
       grad_step: 0.01
       adapt_stepsize: True
       mala_steps: 1
+    color: "tab:purple"
 
   "Ex$^2$MCMC \n w corr":
     mcmc_class: Ex2MCMC
@@ -40,6 +44,7 @@ methods:
       corr_coef: 0.9
       bernoulli_prob_corr: 0.5
       mala_steps: 1
+    color: "tab:red"
 
   FlCISIR:
     mcmc_class: CISIR
@@ -52,6 +57,7 @@ methods:
       lr: 0.01
       batch_size: 100
       n_steps: 200
+    color: 'tab:olive'
 
   FlEx$^2$MCMC:
     mcmc_class: Ex2MCMC
@@ -66,4 +72,5 @@ methods:
       num_flows: 4
       lr: 0.01
       batch_size: 100
-      n_steps: 100
+      n_steps: 200
+    color: 'tab:pink' 

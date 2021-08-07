@@ -48,8 +48,9 @@ def adapt_stepsize_dec(call):
 
 class AbstractMCMC(ABC):
     _steps_done = 0
-    def __init__(self):
+    def __init__(self, verbose=True, **kwargs):
         self._steps_done = 0
+        self.verbose = verbose
 
     @abstractmethod
     @increment_steps
