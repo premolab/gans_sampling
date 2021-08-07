@@ -9,8 +9,6 @@ from tqdm import tqdm
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 
-from .dataloader import LatentFixDataset
-
 import sys
 
 cwd = os.getcwd()
@@ -21,6 +19,7 @@ sys.path.append(api_path_gan_metrics)
 
 from metrics import inception_score
 from fid_score import calculate_fid_given_paths
+from dataloader import LatentFixDataset
 
 
 def save_images_for_fid_fix_latent(G,
