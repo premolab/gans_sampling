@@ -1,7 +1,6 @@
-import numpy as np
 import os
 
-from dataloader import get_loader
+from gans_sampling.tools.gan_metrics.dataloader import get_loader
 from trainer import Trainer
 from discriminator import Discriminator
 from generator import Generator

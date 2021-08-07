@@ -1,8 +1,3 @@
-from dataloader import (get_loader,
-                        CIFAR10,
-                        CIFAR100,
-                        GenDataset)
-
 from spectralnorm import SpectralNorm
 
 from generator import Generator
