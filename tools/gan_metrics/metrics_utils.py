@@ -202,7 +202,8 @@ def calculate_images_statistics(z_agg_step, G,
             use_grayscale = True
 
         latent_dataset = LatentFixDataset(latent_arr_transform, G,
-                                          device, nsamples, use_generator, mean=mean, std=std,
+                                          device, nsamples, use_generator,
+                                          mean=mean, std=std,
                                           use_grayscale=use_grayscale)
         print("start to calculate inception score...")
         start = time.time()
