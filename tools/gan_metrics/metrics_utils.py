@@ -243,7 +243,8 @@ def calculate_images_statistics(z_agg_step, G,
                                                      batch_size_resnet,
                                                      cuda,
                                                      dim_resnet,
-                                                     model_type=model_type)
+                                                     model_type=model_type,
+                                                     use_grayscale=use_grayscale)
         results_fid_test = results_fid_test[0]
 
         mean_fid_test = results_fid_test[1]
@@ -273,7 +274,8 @@ def calculate_images_statistics(z_agg_step, G,
                                                       batch_size_resnet,
                                                       cuda,
                                                       dim_resnet,
-                                                      model_type=model_type)
+                                                      model_type=,
+                                                      use_grayscale=use_grayscale)
         results_fid_train = results_fid_train[0]
 
         mean_fid_train = results_fid_train[1]
