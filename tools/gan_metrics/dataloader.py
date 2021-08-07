@@ -123,6 +123,7 @@ class LatentFixDataset(torch.utils.data.Dataset):
         z = to_var(self.latent_arr[index], self.device)
         if self.use_generator:
             trans_z = self.transform(np.squeeze(to_np(self.denorm(self.G(z)).permute(0, 2, 3, 1))))
+            print(trans_z.shape)
         else:
             trans_z = self.transform(to_np(self.denorm(z).permute(1, 2, 0)))
         if self.use_grayscale:
