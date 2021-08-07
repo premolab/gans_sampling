@@ -189,19 +189,20 @@ def calculate_images_statistics(z_agg_step, G,
 
         latent_dataset = LatentFixDataset(latent_arr_transform, G,
                                           device, nsamples, use_generator, mean=mean, std=std)
-        print("start to calculate inception score...")
-        start = time.time()
-        (inception_score_mean,
-         inception_score_std) = inception_score(latent_dataset,
-                                                device,
-                                                batch_size, True)
-        print(
-            f"{method_name} mean inception score = {inception_score_mean}, std inception score = {inception_score_std}"
-        )
-        inception_scores_mean.append(inception_score_mean)
-        inception_scores_std.append(inception_score_std)
-        end = round(time.time() - start, 3)
-        print(f"time for inception calculation = {end}s")
+        if dataset == "cifar10":
+            print("start to calculate inception score...")
+            start = time.time()
+            (inception_score_mean,
+             inception_score_std) = inception_score(latent_dataset,
+                                                    device,
+                                                    batch_size, True)
+            print(
+                f"{method_name} mean inception score = {inception_score_mean}, std inception score = {inception_score_std}"
+            )
+            inception_scores_mean.append(inception_score_mean)
+            inception_scores_std.append(inception_score_std)
+            end = round(time.time() - start, 3)
+            print(f"time for inception calculation = {end}s")
         if use_generator:
             latent_arr_transform = z_transform(latent_arr)
         else:
