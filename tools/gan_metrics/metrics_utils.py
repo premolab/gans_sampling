@@ -88,16 +88,16 @@ def z_transform(z):
     return z.unsqueeze(-1).unsqueeze(-1)
 
 
-def calculate_cifar10_statistics(z_agg_step, G,
-                                 device, batch_size,
-                                 path_to_save,
-                                 path_to_save_np,
-                                 method_name,
-                                 random_seed=42,
-                                 every_step=50,
-                                 use_conditional_model=False,
-                                 use_generator=True,
-                                 dataset="cifar10"):
+def calculate_images_statistics(z_agg_step, G,
+                                device, batch_size,
+                                path_to_save,
+                                path_to_save_np,
+                                method_name,
+                                random_seed=42,
+                                every_step=50,
+                                use_conditional_model=False,
+                                use_generator=True,
+                                dataset="cifar10"):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
