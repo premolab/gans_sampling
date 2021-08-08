@@ -18,19 +18,19 @@ sys.path.append(api_path_sampling)
 sys.path.append(api_path_gan_metrics)
 
 from metrics import inception_score
-from fid_score import calculate_fid_given_paths
+from fid_msid_scores import calculate_stat_given_paths
 from dataloader import LatentFixDataset
 
 
-def save_images_for_fid_fix_latent(G,
-                                   real_dataloader,
-                                   name_fake_test,
-                                   name_real_test,
-                                   latent_arr,
-                                   device,
-                                   random_seed,
-                                   use_generator=True,
-                                   use_grayscale=False):
+def save_images_fix_latent(G,
+                           real_dataloader,
+                           name_fake_test,
+                           name_real_test,
+                           latent_arr,
+                           device,
+                           random_seed,
+                           use_generator=True,
+                           use_grayscale=False):
     fake_list = []
     real_list = []
     torch.manual_seed(random_seed)
@@ -107,7 +107,8 @@ def calculate_images_statistics(z_agg_step, G,
                                 every_step=50,
                                 use_conditional_model=False,
                                 use_generator=True,
-                                dataset="cifar10"):
+                                dataset="cifar10",
+                                calculate_is=True):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
@@ -169,6 +170,10 @@ def calculate_images_statistics(z_agg_step, G,
     fid_scores_mean_test = []
     fid_scores_std_train = []
     fid_scores_std_test = []
+    msid_scores_mean_train = []
+    msid_scores_mean_test = []
+    msid_scores_std_train = []
+    msid_scores_std_test = []
     num_steps = z_agg_step.shape[0]
     for i in range(num_steps):
         print("------------------------------------")
@@ -205,20 +210,24 @@ def calculate_images_statistics(z_agg_step, G,
                                           device, nsamples, use_generator,
                                           mean=mean, std=std,
                                           use_grayscale=use_grayscale)
-        print("start to calculate inception score...")
-        start = time.time()
-        (inception_score_mean,
-         inception_score_std) = inception_score(latent_dataset,
-                                                device,
-                                                batch_size, True)
-        print(
-            f"{method_name} mean inception score = {inception_score_mean}, "
-            f"std inception score = {inception_score_std}"
-        )
+        if calculate_is:
+            print("start to calculate inception score...")
+            start = time.time()
+            (inception_score_mean,
+             inception_score_std) = inception_score(latent_dataset,
+                                                    device,
+                                                    batch_size, True)
+            print(
+                f"{method_name} mean inception score = {inception_score_mean}, "
+                f"std inception score = {inception_score_std}"
+            )
+            end = round(time.time() - start, 3)
+            print(f"time for inception calculation = {end}s")
+        else:
+            inception_score_mean = -1.0
+            inception_score_std = -1.0
         inception_scores_mean.append(inception_score_mean)
         inception_scores_std.append(inception_score_std)
-        end = round(time.time() - start, 3)
-        print(f"time for inception calculation = {end}s")
         if use_generator:
             latent_arr_transform = z_transform(latent_arr)
         else:
@@ -229,22 +238,23 @@ def calculate_images_statistics(z_agg_step, G,
                                       f"{method_name}_pretrained_fake_test_step_{i * every_step}.npy")
         name_real_test = os.path.join(path_to_save_np,
                                       f"{method_name}_pretrained_real_test_step_{i * every_step}.npy")
-        save_images_for_fid_fix_latent(G,
-                                       test_dataloader,
-                                       name_fake_test,
-                                       name_real_test,
-                                       latent_arr_transform,
-                                       device,
-                                       random_seed,
-                                       use_generator,
-                                       use_grayscale=use_grayscale)
+        save_images_fix_latent(G,
+                               test_dataloader,
+                               name_fake_test,
+                               name_real_test,
+                               latent_arr_transform,
+                               device,
+                               random_seed,
+                               use_generator,
+                               use_grayscale=use_grayscale)
         paths_to_test_method = [name_real_test, name_fake_test]
 
-        results_fid_test = calculate_fid_given_paths(paths_to_test_method,
-                                                     batch_size_resnet,
-                                                     cuda,
-                                                     dim_resnet,
-                                                     model_type=model_type)
+        results_fid_test = calculate_stat_given_paths(paths_to_test_method,
+                                                      batch_size_resnet,
+                                                      cuda,
+                                                      dim_resnet,
+                                                      model_type=model_type,
+                                                      metric='fid')
         results_fid_test = results_fid_test[0]
 
         mean_fid_test = results_fid_test[1]
@@ -255,27 +265,46 @@ def calculate_images_statistics(z_agg_step, G,
         end = round(time.time() - start, 3)
 
         print(f"time for FID calculation on test = {end}s")
+
+        print("start to calculate MSID score for test CIFAR10...")
+        start = time.time()
+        results_msid_test = calculate_stat_given_paths(paths_to_test_method,
+                                                       batch_size_resnet,
+                                                       cuda,
+                                                       dim_resnet,
+                                                       model_type=model_type,
+                                                       metric='msid')
+        results_msid_test = results_msid_test[0]
+        mean_msid_test = results_msid_test[1]
+        std_msid_test = results_msid_test[2]
+        msid_scores_mean_test.append(mean_msid_test)
+        msid_scores_std_test.append(std_msid_test)
+        print(f"MSID score for test {dataset} with {method_name}: mean {mean_msid_test}, score {std_msid_test}")
+        end = round(time.time() - start, 3)
+        print(f"time for MSID calculation on test = {end}s")
+
         print(f"start to calculate FID score for train {dataset}...")
         start = time.time()
         name_fake_train = os.path.join(path_to_save_np,
                                        f"{method_name}_pretrained_fake_train_step_{i * every_step}.npy")
         name_real_train = os.path.join(path_to_save_np,
                                        f"{method_name}_pretrained_real_train_step_{i * every_step}.npy")
-        save_images_for_fid_fix_latent(G,
-                                       train_dataloader,
-                                       name_fake_train,
-                                       name_real_train,
-                                       latent_arr_transform,
-                                       device,
-                                       random_seed,
-                                       use_generator,
-                                       use_grayscale=use_grayscale)
+        save_images_fix_latent(G,
+                               train_dataloader,
+                               name_fake_train,
+                               name_real_train,
+                               latent_arr_transform,
+                               device,
+                               random_seed,
+                               use_generator,
+                               use_grayscale=use_grayscale)
         paths_to_train_method = [name_real_train, name_fake_train]
-        results_fid_train = calculate_fid_given_paths(paths_to_train_method,
-                                                      batch_size_resnet,
-                                                      cuda,
-                                                      dim_resnet,
-                                                      model_type=model_type)
+        results_fid_train = calculate_stat_given_paths(paths_to_train_method,
+                                                       batch_size_resnet,
+                                                       cuda,
+                                                       dim_resnet,
+                                                       model_type=model_type,
+                                                       metric='fid')
         results_fid_train = results_fid_train[0]
 
         mean_fid_train = results_fid_train[1]
@@ -286,18 +315,45 @@ def calculate_images_statistics(z_agg_step, G,
         end = round(time.time() - start, 3)
         print(f"time for FID calculation on train = {end}s")
 
+        print("start to calculate MSID score for train CIFAR10...")
+        start = time.time()
+        results_msid_train = calculate_stat_given_paths(paths_to_train_method,
+                                                        batch_size_resnet,
+                                                        cuda,
+                                                        dim_resnet,
+                                                        model_type=model_type,
+                                                        metric='msid')
+        results_msid_train = results_msid_train[0]
+        mean_msid_train = results_msid_train[1]
+        std_msid_train = results_msid_train[2]
+        msid_scores_mean_train.append(mean_msid_train)
+        msid_scores_std_train.append(std_msid_train)
+        print(f"MSID score for train {dataset} with {method_name}: mean {mean_msid_train}, score {std_msid_train}")
+        end = round(time.time() - start, 3)
+        print(f"time for MSID calculation on test = {end}s")
+
     inception_scores_mean = np.array(inception_scores_mean)
     inception_scores_std = np.array(inception_scores_std)
     fid_scores_mean_train = np.array(fid_scores_mean_train)
     fid_scores_mean_test = np.array(fid_scores_mean_test)
     fid_scores_std_train = np.array(fid_scores_std_train)
     fid_scores_std_test = np.array(fid_scores_std_test)
+    msid_scores_mean_train = np.array(msid_scores_mean_train)
+    msid_scores_mean_test = np.array(msid_scores_mean_test)
+    msid_scores_std_train = np.array(msid_scores_std_train)
+    msid_scores_std_test = np.array(msid_scores_std_test)
     names_list = ["inception_scores_mean", "inception_scores_std",
                   "fid_scores_mean_train", "fid_scores_mean_test",
-                  "fid_scores_std_train", "fid_scores_std_test"]
+                  "fid_scores_std_train", "fid_scores_std_test",
+                  "msid_scores_mean_train", "msid_scores_mean_test",
+                  "msid_scores_std_train", "msid_scores_std_test"
+                  ]
     arrays_list = [inception_scores_mean, inception_scores_std,
                    fid_scores_mean_train, fid_scores_mean_test,
-                   fid_scores_std_train, fid_scores_std_test]
+                   fid_scores_std_train, fid_scores_std_test,
+                   msid_scores_mean_train, msid_scores_mean_test,
+                   msid_scores_std_train, msid_scores_std_test
+                   ]
     dict_results = {}
     for i in range(len(names_list)):
         cur_score_path = os.path.join(path_to_save_np,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Calculates the Frechet Inception Distance (FID) to evalulate GANs
+"""Calculates the Frechet Inception Distance (FID) to evaluate GANs
 
 The FID metric calculates the distance between two distributions of images.
 Typically, we have summary statistics (mean & covariance matrix) of one
@@ -15,7 +15,7 @@ samples respectively.
 
 See --help to see further details.
 
-Code apapted from https://github.com/bioinf-jku/TTUR to use PyTorch instead
+Code adapted from https://github.com/bioinf-jku/TTUR to use PyTorch instead
 of Tensorflow
 
 Copyright 2018 Institute of Bioinformatics, JKU Linz
@@ -33,7 +33,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 import os
-import pathlib
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 import numpy as np
@@ -56,6 +55,8 @@ import torch.nn.functional as F
 from torchvision import models
 from collections import OrderedDict
 
+from msid import msid_score
+
 
 class InceptionV3(nn.Module):
     """Pretrained InceptionV3 network returning feature maps"""
@@ -67,7 +68,7 @@ class InceptionV3(nn.Module):
     # Maps feature dimensionality to their output blocks indices
     BLOCK_INDEX_BY_DIM = {
         64: 0,   # First max pooling features
-        192: 1,  # Second max pooling featurs
+        192: 1,  # Second max pooling features
         768: 2,  # Pre-aux classifier features
         2048: 3  # Final average pooling features
     }
@@ -399,7 +400,7 @@ def extract_lenet_features(imgs, net, cuda):
     feats = []
     imgs = imgs.reshape([-1, 100] + list(imgs.shape[1:]))
     if imgs[0].min() < -0.001:
-      imgs = (imgs + 1)/2.0
+        imgs = (imgs + 1)/2.0
     print(imgs.shape, imgs.min(), imgs.max())
     if cuda:
         imgs = torch.from_numpy(imgs).cuda()
@@ -429,8 +430,9 @@ def _compute_activations(path, model, batch_size, dims, cuda, model_type):
     return act
 
 
-def calculate_fid_given_paths(paths, batch_size, cuda, dims, bootstrap=True, n_bootstraps=10, model_type='inception'):
-    """Calculates the FID of two paths"""
+def calculate_stat_given_paths(paths, batch_size, cuda, dims, bootstrap=True,
+                               n_bootstraps=10, model_type='inception', metric='fid'):
+    """Calculates the FID/MSID of two paths"""
     pths = []
     for p in paths:
         if not os.path.exists(p):
@@ -451,7 +453,7 @@ def calculate_fid_given_paths(paths, batch_size, cuda, dims, bootstrap=True, n_b
         model = LeNet5()
         model.load_state_dict(torch.load('./models/lenet.pth'))
     if cuda:
-       model.cuda()
+        model.cuda()
 
     act_true = _compute_activations(pths[0], model, batch_size, dims, cuda, model_type)
     n_bootstraps = n_bootstraps if bootstrap else 1
@@ -460,25 +462,30 @@ def calculate_fid_given_paths(paths, batch_size, cuda, dims, bootstrap=True, n_b
     for j, pth in enumerate(pths):
         print(paths[j+1])
         actj = _compute_activations(pth, model, batch_size, dims, cuda, model_type)
-        fid_values = np.zeros((n_bootstraps))
-        with tqdm(range(n_bootstraps), desc='FID') as bar:
+        stat_values = np.zeros(n_bootstraps)
+        with tqdm(range(n_bootstraps), desc=metric) as bar:
             for i in bar:
                 act1_bs = act_true[np.random.choice(act_true.shape[0], act_true.shape[0], replace=True)]
                 act2_bs = actj[np.random.choice(actj.shape[0], actj.shape[0], replace=True)]
-                m1, s1 = calculate_activation_statistics(act1_bs)
-                m2, s2 = calculate_activation_statistics(act2_bs)
-                fid_values[i] = calculate_frechet_distance(m1, s1, m2, s2)
-                bar.set_postfix({'mean': fid_values[:i+1].mean()})
-        results.append((paths[j+1], fid_values.mean(), fid_values.std()))
+                if metric == 'fid':
+                    m1, s1 = calculate_activation_statistics(act1_bs)
+                    m2, s2 = calculate_activation_statistics(act2_bs)
+                    stat_values[i] = calculate_frechet_distance(m1, s1, m2, s2)
+                elif metric == 'msid':
+                    stat_values[i] = msid_score(act1_bs, act2_bs)
+                else:
+                    raise ValueError("We support now only FID and MSID metrics")
+                bar.set_postfix({'mean': stat_values[:i+1].mean()})
+        results.append((paths[j+1], stat_values.mean(), stat_values.std()))
     return results
 
 
 if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--true', type=str, required=True,
-                        help=('Path to the true images'))
+                        help='Path to the true images')
     parser.add_argument('--fake', type=str, nargs='+', required=True,
-                        help=('Path to the generated images'))
+                        help='Path to the generated images')
     parser.add_argument('--batch-size', type=int, default=50,
                         help='Batch size to use')
     parser.add_argument('--dims', type=int, default=2048,
@@ -494,6 +501,6 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     paths = [args.true] + args.fake
 
-    results = calculate_fid_given_paths(paths, args.batch_size, args.gpu != '', args.dims, model_type=args.model)
+    results = calculate_stat_given_paths(paths, args.batch_size, args.gpu != '', args.dims, model_type=args.model)
     for p, m, s in results:
         print('FID (%s): %.2f (%.3f)' % (p, m, s))
