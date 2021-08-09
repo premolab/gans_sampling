@@ -109,7 +109,8 @@ def calculate_images_statistics(z_agg_step, G,
                                 use_generator=True,
                                 dataset="cifar10",
                                 calculate_is=True,
-                                calculate_msid_train=False):
+                                calculate_msid_train=False,
+                                calculate_msid_test=False):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
@@ -266,23 +267,26 @@ def calculate_images_statistics(z_agg_step, G,
         end = round(time.time() - start, 3)
 
         print(f"time for FID calculation on test = {end}s")
-
-        print(f"start to calculate MSID score for test {dataset}...")
-        start = time.time()
-        results_msid_test = calculate_stat_given_paths(paths_to_test_method,
-                                                       batch_size_resnet,
-                                                       cuda,
-                                                       dim_resnet,
-                                                       model_type=model_type,
-                                                       metric='msid')
-        results_msid_test = results_msid_test[0]
-        mean_msid_test = results_msid_test[1]
-        std_msid_test = results_msid_test[2]
+        if calculate_msid_test:
+            print(f"start to calculate MSID score for test {dataset}...")
+            start = time.time()
+            results_msid_test = calculate_stat_given_paths(paths_to_test_method,
+                                                           batch_size_resnet,
+                                                           cuda,
+                                                           dim_resnet,
+                                                           model_type=model_type,
+                                                           metric='msid')
+            results_msid_test = results_msid_test[0]
+            mean_msid_test = results_msid_test[1]
+            std_msid_test = results_msid_test[2]
+            print(f"MSID score for test {dataset} with {method_name}: mean {mean_msid_test}, std {std_msid_test}")
+            end = round(time.time() - start, 3)
+            print(f"time for MSID calculation on test = {end}s")
+        else:
+            mean_msid_test = -1.0
+            std_msid_test = -1.0
         msid_scores_mean_test.append(mean_msid_test)
         msid_scores_std_test.append(std_msid_test)
-        print(f"MSID score for test {dataset} with {method_name}: mean {mean_msid_test}, std {std_msid_test}")
-        end = round(time.time() - start, 3)
-        print(f"time for MSID calculation on test = {end}s")
 
         print(f"start to calculate FID score for train {dataset}...")
         start = time.time()
@@ -332,11 +336,11 @@ def calculate_images_statistics(z_agg_step, G,
             print(f"MSID score for train {dataset} with {method_name}: mean {mean_msid_train}, std {std_msid_train}")
             end = round(time.time() - start, 3)
             print(f"time for MSID calculation on test = {end}s")
-    else:
-        mean_msid_train = -1.0
-        std_msid_train = -1.0
-    msid_scores_mean_train.append(mean_msid_train)
-    msid_scores_std_train.append(std_msid_train)
+        else:
+            mean_msid_train = -1.0
+            std_msid_train = -1.0
+        msid_scores_mean_train.append(mean_msid_train)
+        msid_scores_std_train.append(std_msid_train)
 
     inception_scores_mean = np.array(inception_scores_mean)
     inception_scores_std = np.array(inception_scores_std)
