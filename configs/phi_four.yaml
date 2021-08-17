@@ -17,7 +17,7 @@ batch_size: 100
 # 'tab:olive'
 # 'tab:cyan'
 
-N: 1000
+N: 200
 dim_phys: 1
 prior_type: coupled
 prior_a: 1
@@ -27,6 +27,7 @@ beta: 20.0
 tilt_value: null
 tilt_lambda: null
 depth_blocks: 4
+hidden_dim: 50
 ratio_pos_init: -1 #0.5
 
 methods:
@@ -35,7 +36,7 @@ methods:
   #   n_steps: 1000
   #   # ess_rar: 50
   #   params:
-  #     grad_step: 
+  #     grad_step:
   #     adapt_stepsize: True
 
   # "Ex$^2$MCMC w/o corr":

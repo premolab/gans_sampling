@@ -1,6 +1,7 @@
 #!/bin/bash
 
-for dist_config in banana half_banana funnel cauchy
+#for dist_config in banana half_banana funnel cauchy
+for dist_config in funnel cauchy
 do
     echo "Dist ${dist_config}"
     python experiments/complex_geometry.py \

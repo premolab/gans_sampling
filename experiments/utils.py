@@ -1,13 +1,15 @@
-import torch
-import numpy as np
 import random
+
+import numpy as np
+import torch
 
 
 class DotConfig:
     """
-    Simple wrapper for config 
+    Simple wrapper for config
     allowing access with dot notation
     """
+
     def __init__(self, yaml):
         self._dict = dict(yaml)
 
@@ -16,7 +18,7 @@ class DotConfig:
         if isinstance(v, dict):
             return DotConfig(v)
         return v
-    
+
     def items(self):
         return [(k, DotConfig(v)) for k, v in self._dict.items()]
 
@@ -30,4 +32,3 @@ def random_seed(seed):
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-

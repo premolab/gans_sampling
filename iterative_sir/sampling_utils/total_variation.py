@@ -1,10 +1,10 @@
-from tqdm.auto import trange
-from flax import struct
 import jax
-from jax import numpy as jnp
-from scipy.stats import gaussian_kde
 import numpy as np
 import ot
+from flax import struct
+from jax import numpy as jnp
+from scipy.stats import gaussian_kde
+from tqdm.auto import trange
 
 
 class MeanTracker:
@@ -47,7 +47,10 @@ def create_random_projection(key: jnp.ndarray, xs: jnp.ndarray) -> Projector:
     return Projector(x0, v)
 
 
-def create_random_2d_projection(key: jnp.ndarray, xs: jnp.ndarray) -> Projector:
+def create_random_2d_projection(
+    key: jnp.ndarray,
+    xs: jnp.ndarray,
+) -> Projector:
     x0 = jnp.mean(xs, 0)
     v = jax.random.normal(key, [len(x0), len(x0)])
     v = v / jnp.linalg.norm(v)
@@ -58,7 +61,11 @@ def create_random_2d_projection(key: jnp.ndarray, xs: jnp.ndarray) -> Projector:
 
 
 def average_total_variation(
-    key: jnp.ndarray, true: jnp.ndarray, other: jnp.ndarray, n_samples: int, n_steps: int
+    key: jnp.ndarray,
+    true: jnp.ndarray,
+    other: jnp.ndarray,
+    n_samples: int,
+    n_steps: int,
 ) -> MeanTracker:
     tracker = MeanTracker()
     keys = jax.random.split(key, n_steps)
@@ -67,9 +74,18 @@ def average_total_variation(
     return tracker
 
 
-def total_variation(key: jnp.ndarray, xs_true: jnp.ndarray, xs_pred: jnp.ndarray, n_samples: int):
+def total_variation(
+    key: jnp.ndarray,
+    xs_true: jnp.ndarray,
+    xs_pred: jnp.ndarray,
+    n_samples: int,
+):
     proj = create_random_projection(key, xs_true)
-    return total_variation_1d(proj.project(xs_true), proj.project(xs_pred), n_samples)
+    return total_variation_1d(
+        proj.project(xs_true),
+        proj.project(xs_pred),
+        n_samples,
+    )
 
 
 def total_variation_1d(xs_true, xs_pred, n_samples):
@@ -81,7 +97,11 @@ def total_variation_1d(xs_true, xs_pred, n_samples):
 
     points = np.linspace(x_min, x_max, n_samples)
 
-    return .5 * np.abs(true_density(points) - pred_density(points)).mean() * (x_max - x_min)
+    return (
+        0.5
+        * np.abs(true_density(points) - pred_density(points)).mean()
+        * (x_max - x_min)
+    )
 
 
 # def average_emd(

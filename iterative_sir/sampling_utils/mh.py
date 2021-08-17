@@ -1,4 +1,3 @@
-
 # Copyright (c) 2018 Uber Technologies, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import numpy as np
-from scipy.special import logit
 from scipy.special import expit as logistic
+from scipy.special import logit
+
 
 # EPS = 1e-14
 
 # ignore warnings for zero-division
-np.seterr(divide='ignore')
+np.seterr(divide="ignore")
 
 
 def cumargmax(x):
@@ -36,6 +36,7 @@ def cumargmax(x):
     idx[x < mm] = 0
     idx = np.maximum.accumulate(idx)
     return idx
+
 
 # ============================================================================
 # General utils for MCMC
@@ -95,21 +96,27 @@ def test_accept_prob_MH_disc():
     P_disc_new = binary_posterior(p_gan_new, p_real_new)
     alpha1 = accept_prob_MH_disc(P_disc_last, P_disc_new)
 
-    assert(np.allclose(alpha0, alpha1))
+    assert np.allclose(alpha0, alpha1)
+
 
 # ============================================================================
 # The GAN pickers
 # ============================================================================
 
 
-def rejection_sample(d_score, epsilon=1e-6, shift_percent=95.0, score_max=None,
-                     random=np.random):
-    '''Rejection scheme from:
+def rejection_sample(
+    d_score,
+    epsilon=1e-6,
+    shift_percent=95.0,
+    score_max=None,
+    random=np.random,
+):
+    """Rejection scheme from:
     https://arxiv.org/pdf/1810.06758.pdf
-    '''
-    assert(np.ndim(d_score) == 1 and len(d_score) > 0)
-    assert(0 <= np.min(d_score) and np.max(d_score) <= 1)
-    assert(np.ndim(score_max) == 0)
+    """
+    assert np.ndim(d_score) == 1 and len(d_score) > 0
+    assert 0 <= np.min(d_score) and np.max(d_score) <= 1
+    assert np.ndim(score_max) == 0
 
     # Chop off first since we assume that is real point and reject does not
     # start with real point.
@@ -117,8 +124,7 @@ def rejection_sample(d_score, epsilon=1e-6, shift_percent=95.0, score_max=None,
 
     # Make sure logit finite
     d_score = np.clip(d_score.astype(np.float), 1e-14, 1 - 1e-14)
-    max_burnin_d_score = np.clip(score_max.astype(np.float),
-                                 1e-14, 1 - 1e-14)
+    max_burnin_d_score = np.clip(score_max.astype(np.float), 1e-14, 1 - 1e-14)
 
     log_M = logit(max_burnin_d_score)
 
@@ -149,9 +155,9 @@ def _mh_sample(d_score, init_picked=0, start=1, random=np.random):
     """
     Same as `mh_sample` but more obviously correct.
     """
-    assert(np.ndim(d_score) == 1 and len(d_score) > 0)
-    assert(0 <= np.min(d_score) and np.max(d_score) <= 1)
-    assert(init_picked < start)
+    assert np.ndim(d_score) == 1 and len(d_score) > 0
+    assert 0 <= np.min(d_score) and np.max(d_score) <= 1
+    assert init_picked < start
 
     d_last = np.float_(d_score[init_picked])
     picked_round = init_picked
@@ -161,7 +167,7 @@ def _mh_sample(d_score, init_picked=0, start=1, random=np.random):
         # Note: we might want to move to log or logit scale for disc probs if
         # this starts to create numerics issues.
         alpha = accept_prob_MH_disc(d_last, d_new)
-        assert(0 <= alpha <= 1)
+        assert 0 <= alpha <= 1
         if random.rand() <= alpha:
             d_last = d_new
             picked_round = ii
@@ -169,8 +175,8 @@ def _mh_sample(d_score, init_picked=0, start=1, random=np.random):
 
 
 def mh_sample(d_score, score_max=None, random=np.random):
-    assert(np.ndim(d_score) == 1 and len(d_score) > 0)
-    assert(0 <= np.min(d_score) and np.max(d_score) <= 1)
+    assert np.ndim(d_score) == 1 and len(d_score) > 0
+    assert 0 <= np.min(d_score) and np.max(d_score) <= 1
 
     OR = disc_2_odds_ratio(d_score)
     OR_U = OR / random.rand(len(d_score))
@@ -185,9 +191,9 @@ def mh_sample(d_score, score_max=None, random=np.random):
 
 
 def cumm_mh_sample_distn(d_score, w):
-    assert(np.ndim(d_score) == 1 and len(d_score) > 0)
-    assert(0 <= np.min(d_score) and np.max(d_score) <= 1)
-    assert(np.shape(d_score) == np.shape(w))
+    assert np.ndim(d_score) == 1 and len(d_score) > 0
+    assert 0 <= np.min(d_score) and np.max(d_score) <= 1
+    assert np.shape(d_score) == np.shape(w)
 
     rounds = len(d_score)
 
@@ -201,17 +207,17 @@ def cumm_mh_sample_distn(d_score, w):
         # Note this is bit of wasted computation here since p_idx[ii:] == 0
         alpha = accept_prob_MH_disc(d_score, P_disc_new)
         p_idx = p_idx * (1.0 - alpha)
-        assert(np.all(p_idx[ii:] == 0.0))
+        assert np.all(p_idx[ii:] == 0.0)
 
         p_idx[ii] = 1.0 - np.sum(p_idx)
-        assert(np.all(0 <= p_idx))
-        assert(np.isclose(np.sum(p_idx), 1.0))
+        assert np.all(0 <= p_idx)
+        assert np.isclose(np.sum(p_idx), 1.0)
 
         val[ii] = np.dot(p_idx, w)
     return val
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from time import time
 
     np.random.seed(4534)
@@ -228,12 +234,12 @@ if __name__ == '__main__':
         _ = r.rand()
         t = time()
         idx = _mh_sample(d_score, random=r)
-        t0 += (time() - t)
+        t0 += time() - t
 
         r = np.random.RandomState(seed)
         t = time()
         idx2, _ = mh_sample(d_score, random=r)
-        t1 += (time() - t)
+        t1 += time() - t
 
         print(idx, idx2)
         assert idx == idx2

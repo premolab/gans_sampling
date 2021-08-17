@@ -34,27 +34,32 @@ limitations under the License.
 """
 import os
 import pathlib
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 import numpy as np
 import torch
-from scipy import linalg
 from PIL import Image
+from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
+
 
 try:
     from tqdm import tqdm
 except ImportError:
     # If not tqdm is not available, provide a mock version of it
-    def tqdm(x): return x
+    def tqdm(x):
+        return x
+
+
 #  from models import lenet
 #  from models.inception import InceptionV3
 #  from models.lenet import LeNet5
 
+from collections import OrderedDict
+
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
-from collections import OrderedDict
 
 
 class InceptionV3(nn.Module):
@@ -66,17 +71,19 @@ class InceptionV3(nn.Module):
 
     # Maps feature dimensionality to their output blocks indices
     BLOCK_INDEX_BY_DIM = {
-        64: 0,   # First max pooling features
+        64: 0,  # First max pooling features
         192: 1,  # Second max pooling featurs
         768: 2,  # Pre-aux classifier features
-        2048: 3  # Final average pooling features
+        2048: 3,  # Final average pooling features
     }
 
-    def __init__(self,
-                 output_blocks=[DEFAULT_BLOCK_INDEX],
-                 resize_input=True,
-                 normalize_input=True,
-                 requires_grad=False):
+    def __init__(
+        self,
+        output_blocks=[DEFAULT_BLOCK_INDEX],
+        resize_input=True,
+        normalize_input=True,
+        requires_grad=False,
+    ):
         """Build pretrained InceptionV3
 
         Parameters
@@ -99,15 +106,16 @@ class InceptionV3(nn.Module):
             If true, parameters of the model require gradient. Possibly useful
             for finetuning the network
         """
-        super(InceptionV3, self).__init__()
+        super().__init__()
 
         self.resize_input = resize_input
         self.normalize_input = normalize_input
         self.output_blocks = sorted(output_blocks)
         self.last_needed_block = max(output_blocks)
 
-        assert self.last_needed_block <= 3, \
-            'Last possible output block index is 3'
+        assert (
+            self.last_needed_block <= 3
+        ), "Last possible output block index is 3"
 
         self.blocks = nn.ModuleList()
 
@@ -118,7 +126,7 @@ class InceptionV3(nn.Module):
             inception.Conv2d_1a_3x3,
             inception.Conv2d_2a_3x3,
             inception.Conv2d_2b_3x3,
-            nn.MaxPool2d(kernel_size=3, stride=2)
+            nn.MaxPool2d(kernel_size=3, stride=2),
         ]
         self.blocks.append(nn.Sequential(*block0))
 
@@ -127,7 +135,7 @@ class InceptionV3(nn.Module):
             block1 = [
                 inception.Conv2d_3b_1x1,
                 inception.Conv2d_4a_3x3,
-                nn.MaxPool2d(kernel_size=3, stride=2)
+                nn.MaxPool2d(kernel_size=3, stride=2),
             ]
             self.blocks.append(nn.Sequential(*block1))
 
@@ -151,7 +159,7 @@ class InceptionV3(nn.Module):
                 inception.Mixed_7a,
                 inception.Mixed_7b,
                 inception.Mixed_7c,
-                nn.AdaptiveAvgPool2d(output_size=(1, 1))
+                nn.AdaptiveAvgPool2d(output_size=(1, 1)),
             ]
             self.blocks.append(nn.Sequential(*block3))
 
@@ -176,10 +184,12 @@ class InceptionV3(nn.Module):
         x = inp
 
         if self.resize_input:
-            x = F.interpolate(x,
-                              size=(299, 299),
-                              mode='bilinear',
-                              align_corners=False)
+            x = F.interpolate(
+                x,
+                size=(299, 299),
+                mode="bilinear",
+                align_corners=False,
+            )
 
         if self.normalize_input:
             x = 2 * x - 1  # Scale from range (0, 1) to range (-1, 1)
@@ -209,26 +219,41 @@ class LeNet5(nn.Module):
     tanh
     F7 - 10 (Output)
     """
+
     def __init__(self):
-        super(LeNet5, self).__init__()
+        super().__init__()
 
-        self.convnet = nn.Sequential(OrderedDict([
-            ('c1', nn.Conv2d(1, 6, kernel_size=(5, 5))),
-            ('tanh1', nn.Tanh()),
-            ('s2', nn.MaxPool2d(kernel_size=(2, 2), stride=2, padding=1)),
-            ('c3', nn.Conv2d(6, 16, kernel_size=(5, 5))),
-            ('tanh3', nn.Tanh()),
-            ('s4', nn.MaxPool2d(kernel_size=(2, 2), stride=2, padding=1)),
-            ('c5', nn.Conv2d(16, 120, kernel_size=(5, 5))),
-            ('tanh5', nn.Tanh())
-        ]))
+        self.convnet = nn.Sequential(
+            OrderedDict(
+                [
+                    ("c1", nn.Conv2d(1, 6, kernel_size=(5, 5))),
+                    ("tanh1", nn.Tanh()),
+                    (
+                        "s2",
+                        nn.MaxPool2d(kernel_size=(2, 2), stride=2, padding=1),
+                    ),
+                    ("c3", nn.Conv2d(6, 16, kernel_size=(5, 5))),
+                    ("tanh3", nn.Tanh()),
+                    (
+                        "s4",
+                        nn.MaxPool2d(kernel_size=(2, 2), stride=2, padding=1),
+                    ),
+                    ("c5", nn.Conv2d(16, 120, kernel_size=(5, 5))),
+                    ("tanh5", nn.Tanh()),
+                ],
+            ),
+        )
 
-        self.fc = nn.Sequential(OrderedDict([
-            ('f6', nn.Linear(120, 84)),
-            ('tanh6', nn.Tanh()),
-            ('f7', nn.Linear(84, 10)),
-            ('sig7', nn.LogSoftmax(dim=-1))
-        ]))
+        self.fc = nn.Sequential(
+            OrderedDict(
+                [
+                    ("f6", nn.Linear(120, 84)),
+                    ("tanh6", nn.Tanh()),
+                    ("f7", nn.Linear(84, 10)),
+                    ("sig7", nn.LogSoftmax(dim=-1)),
+                ],
+            ),
+        )
 
     def forward(self, img):
         output = self.convnet(img)
@@ -243,8 +268,14 @@ class LeNet5(nn.Module):
         return output
 
 
-def get_activations(files, model, batch_size=50, dims=2048,
-                    cuda=False, verbose=False):
+def get_activations(
+    files,
+    model,
+    batch_size=50,
+    dims=2048,
+    cuda=False,
+    verbose=False,
+):
     """Calculates the activations of the pool_3 layer for all images.
 
     Params:
@@ -269,11 +300,15 @@ def get_activations(files, model, batch_size=50, dims=2048,
     is_numpy = True if type(files[0]) == np.ndarray else False
 
     if len(files) % batch_size != 0:
-        print(('Warning: number of images is not a multiple of the '
-               'batch size. Some samples are going to be ignored.'))
+        print(
+            "Warning: number of images is not a multiple of the "
+            "batch size. Some samples are going to be ignored.",
+        )
     if batch_size > len(files):
-        print(('Warning: batch size is bigger than the data size. '
-               'Setting batch size to data size'))
+        print(
+            "Warning: batch size is bigger than the data size. "
+            "Setting batch size to data size",
+        )
         batch_size = len(files)
 
     n_batches = len(files) // batch_size
@@ -283,15 +318,19 @@ def get_activations(files, model, batch_size=50, dims=2048,
 
     for i in tqdm(range(n_batches)):
         if verbose:
-            print('\rPropagating batch %d/%d' % (i + 1, n_batches), end='', flush=True)
+            print(
+                "\rPropagating batch %d/%d" % (i + 1, n_batches),
+                end="",
+                flush=True,
+            )
         start = i * batch_size
         end = start + batch_size
         if is_numpy:
             images = np.copy(files[start:end]) + 1
-            images /= 2.
+            images /= 2.0
         else:
             images = [np.array(Image.open(str(f))) for f in files[start:end]]
-            images = np.stack(images).astype(np.float32) / 255.
+            images = np.stack(images).astype(np.float32) / 255.0
             # Reshape to (n_images, 3, height, width)
             images = images.transpose((0, 3, 1, 2))
 
@@ -309,7 +348,7 @@ def get_activations(files, model, batch_size=50, dims=2048,
         pred_arr[start:end] = pred.cpu().data.numpy().reshape(batch_size, -1)
 
     if verbose:
-        print('done', np.min(images))
+        print("done", np.min(images))
 
     return pred_arr
 
@@ -342,18 +381,22 @@ def calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     sigma1 = np.atleast_2d(sigma1)
     sigma2 = np.atleast_2d(sigma2)
 
-    assert mu1.shape == mu2.shape, \
-        'Training and test mean vectors have different lengths'
-    assert sigma1.shape == sigma2.shape, \
-        'Training and test covariances have different dimensions'
+    assert (
+        mu1.shape == mu2.shape
+    ), "Training and test mean vectors have different lengths"
+    assert (
+        sigma1.shape == sigma2.shape
+    ), "Training and test covariances have different dimensions"
 
     diff = mu1 - mu2
 
     # Product might be almost singular
     covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
     if not np.isfinite(covmean).all():
-        msg = ('fid calculation produces singular product; '
-               'adding %s to diagonal of cov estimates') % eps
+        msg = (
+            "fid calculation produces singular product; "
+            "adding %s to diagonal of cov estimates"
+        ) % eps
         print(msg)
         offset = np.eye(sigma1.shape[0]) * eps
         covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
@@ -362,13 +405,14 @@ def calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
     if np.iscomplexobj(covmean):
         if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
             m = np.max(np.abs(covmean.imag))
-            raise ValueError('Imaginary component {}'.format(m))
+            raise ValueError(f"Imaginary component {m}")
         covmean = covmean.real
 
     tr_covmean = np.trace(covmean)
 
-    return (diff.dot(diff) + np.trace(sigma1) +
-            np.trace(sigma2) - 2 * tr_covmean)
+    return (
+        diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
+    )
 
 
 def calculate_activation_statistics(act):
@@ -399,7 +443,7 @@ def extract_lenet_features(imgs, net, cuda):
     feats = []
     imgs = imgs.reshape([-1, 100] + list(imgs.shape[1:]))
     if imgs[0].min() < -0.001:
-      imgs = (imgs + 1)/2.0
+        imgs = (imgs + 1) / 2.0
     print(imgs.shape, imgs.min(), imgs.max())
     if cuda:
         imgs = torch.from_numpy(imgs).cuda()
@@ -414,30 +458,40 @@ def extract_lenet_features(imgs, net, cuda):
 def _compute_activations(path, model, batch_size, dims, cuda, model_type):
     if not type(path) == np.ndarray:
         import glob
-        jpg = os.path.join(path, '*.jpg')
-        png = os.path.join(path, '*.png')
+
+        jpg = os.path.join(path, "*.jpg")
+        png = os.path.join(path, "*.png")
         path = glob.glob(jpg) + glob.glob(png)
         if len(path) > 25000:
             import random
+
             random.shuffle(path)
             path = path[:25000]
-    if model_type == 'inception':
+    if model_type == "inception":
         act = get_activations(path, model, batch_size, dims, cuda)
-    elif model_type == 'lenet':
+    elif model_type == "lenet":
         act = extract_lenet_features(path, model, cuda)
 
     return act
 
 
-def calculate_fid_given_paths(paths, batch_size, cuda, dims, bootstrap=True, n_bootstraps=10, model_type='inception'):
+def calculate_fid_given_paths(
+    paths,
+    batch_size,
+    cuda,
+    dims,
+    bootstrap=True,
+    n_bootstraps=10,
+    model_type="inception",
+):
     """Calculates the FID of two paths"""
     pths = []
     for p in paths:
         if not os.path.exists(p):
-            raise RuntimeError('Invalid path: %s' % p)
+            raise RuntimeError("Invalid path: %s" % p)
         if os.path.isdir(p):
             pths.append(p)
-        elif p.endswith('.npy'):
+        elif p.endswith(".npy"):
             np_imgs = np.load(p)
             if np_imgs.shape[0] > 25000:
                 np_imgs = np_imgs[:50000]
@@ -445,55 +499,115 @@ def calculate_fid_given_paths(paths, batch_size, cuda, dims, bootstrap=True, n_b
 
     block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
 
-    if model_type == 'inception':
+    if model_type == "inception":
         model = InceptionV3([block_idx])
-    elif model_type == 'lenet':
+    elif model_type == "lenet":
         model = LeNet5()
-        model.load_state_dict(torch.load('./models/lenet.pth'))
+        model.load_state_dict(torch.load("./models/lenet.pth"))
     if cuda:
-       model.cuda()
+        model.cuda()
 
-    act_true = _compute_activations(pths[0], model, batch_size, dims, cuda, model_type)
+    act_true = _compute_activations(
+        pths[0],
+        model,
+        batch_size,
+        dims,
+        cuda,
+        model_type,
+    )
     n_bootstraps = n_bootstraps if bootstrap else 1
     pths = pths[1:]
     results = []
     for j, pth in enumerate(pths):
-        print(paths[j+1])
-        actj = _compute_activations(pth, model, batch_size, dims, cuda, model_type)
-        fid_values = np.zeros((n_bootstraps))
-        with tqdm(range(n_bootstraps), desc='FID') as bar:
+        print(paths[j + 1])
+        actj = _compute_activations(
+            pth,
+            model,
+            batch_size,
+            dims,
+            cuda,
+            model_type,
+        )
+        fid_values = np.zeros(n_bootstraps)
+        with tqdm(range(n_bootstraps), desc="FID") as bar:
             for i in bar:
-                act1_bs = act_true[np.random.choice(act_true.shape[0], act_true.shape[0], replace=True)]
-                act2_bs = actj[np.random.choice(actj.shape[0], actj.shape[0], replace=True)]
+                act1_bs = act_true[
+                    np.random.choice(
+                        act_true.shape[0],
+                        act_true.shape[0],
+                        replace=True,
+                    )
+                ]
+                act2_bs = actj[
+                    np.random.choice(
+                        actj.shape[0],
+                        actj.shape[0],
+                        replace=True,
+                    )
+                ]
                 m1, s1 = calculate_activation_statistics(act1_bs)
                 m2, s2 = calculate_activation_statistics(act2_bs)
                 fid_values[i] = calculate_frechet_distance(m1, s1, m2, s2)
-                bar.set_postfix({'mean': fid_values[:i+1].mean()})
-        results.append((paths[j+1], fid_values.mean(), fid_values.std()))
+                bar.set_postfix({"mean": fid_values[: i + 1].mean()})
+        results.append((paths[j + 1], fid_values.mean(), fid_values.std()))
     return results
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--true', type=str, required=True,
-                        help=('Path to the true images'))
-    parser.add_argument('--fake', type=str, nargs='+', required=True,
-                        help=('Path to the generated images'))
-    parser.add_argument('--batch-size', type=int, default=50,
-                        help='Batch size to use')
-    parser.add_argument('--dims', type=int, default=2048,
-                        choices=list(InceptionV3.BLOCK_INDEX_BY_DIM),
-                        help=('Dimensionality of Inception features to use. '
-                              'By default, uses pool3 features'))
-    parser.add_argument('-c', '--gpu', default='', type=str,
-                        help='GPU to use (leave blank for CPU only)')
-    parser.add_argument('--model', default='inception', type=str,
-                        help='inception or lenet')
+    parser.add_argument(
+        "--true",
+        type=str,
+        required=True,
+        help=("Path to the true images"),
+    )
+    parser.add_argument(
+        "--fake",
+        type=str,
+        nargs="+",
+        required=True,
+        help=("Path to the generated images"),
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=50,
+        help="Batch size to use",
+    )
+    parser.add_argument(
+        "--dims",
+        type=int,
+        default=2048,
+        choices=list(InceptionV3.BLOCK_INDEX_BY_DIM),
+        help=(
+            "Dimensionality of Inception features to use. "
+            "By default, uses pool3 features"
+        ),
+    )
+    parser.add_argument(
+        "-c",
+        "--gpu",
+        default="",
+        type=str,
+        help="GPU to use (leave blank for CPU only)",
+    )
+    parser.add_argument(
+        "--model",
+        default="inception",
+        type=str,
+        help="inception or lenet",
+    )
     args = parser.parse_args()
     print(args)
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     paths = [args.true] + args.fake
 
-    results = calculate_fid_given_paths(paths, args.batch_size, args.gpu != '', args.dims, model_type=args.model)
+    results = calculate_fid_given_paths(
+        paths,
+        args.batch_size,
+        args.gpu != "",
+        args.dims,
+        model_type=args.model,
+    )
     for p, m, s in results:
-        print('FID (%s): %.2f (%.3f)' % (p, m, s))
+        print(f"FID ({p}): {m:.2f} ({s:.3f})")

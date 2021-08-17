@@ -12,24 +12,20 @@ class Generator(nn.Module):
         self.ch = args.ngf
         self.device = args.device
 
-        self.linear = nn.Linear(self.z_dim, self.m_g*self.m_g*self.ch)
+        self.linear = nn.Linear(self.z_dim, self.m_g * self.m_g * self.ch)
         self.activation = nn.ReLU()
         self.deconv = nn.Sequential(
-
-            nn.ConvTranspose2d(self.ch, self.ch//2, 4, 2, 1),
-            nn.BatchNorm2d(self.ch//2),
+            nn.ConvTranspose2d(self.ch, self.ch // 2, 4, 2, 1),
+            nn.BatchNorm2d(self.ch // 2),
             nn.ReLU(),
-
-            nn.ConvTranspose2d(self.ch//2, self.ch//4, 4, 2, 1),
-            nn.BatchNorm2d(self.ch//4),
+            nn.ConvTranspose2d(self.ch // 2, self.ch // 4, 4, 2, 1),
+            nn.BatchNorm2d(self.ch // 4),
             nn.ReLU(),
-
-            nn.ConvTranspose2d(self.ch//4, self.ch//8, 4, 2, 1),
-            nn.BatchNorm2d(self.ch//8),
+            nn.ConvTranspose2d(self.ch // 4, self.ch // 8, 4, 2, 1),
+            nn.BatchNorm2d(self.ch // 8),
             nn.ReLU(),
-
-            nn.ConvTranspose2d(self.ch//8, 3, 3, 1, 1),
-            nn.Tanh()
+            nn.ConvTranspose2d(self.ch // 8, 3, 3, 1, 1),
+            nn.Tanh(),
         )
 
     def forward(self, z):

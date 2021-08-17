@@ -1,17 +1,19 @@
+import numpy as np
+import pandas as pd
+
 from . import classification as cl
+
+
 # import mlpaper.benchmark_tools as bt
 # based on https://github.com/uber-research/metropolis-hastings-gans/blob/master/mhgan/classification.py with
 # install mlpaper
-
-import numpy as np
-import pandas as pd
 
 
 def validate_scores(scores):
     assert isinstance(scores, dict)
     for sv in scores.values():
         assert isinstance(sv, np.ndarray)
-        assert sv.dtype.kind == 'f'
+        assert sv.dtype.kind == "f"
         assert sv.ndim == 1
         assert np.all(0 <= sv) and np.all(sv <= 1)
     scores = pd.DataFrame(scores)
@@ -20,7 +22,7 @@ def validate_scores(scores):
 
 def validate_X(X):
     assert isinstance(X, np.ndarray)
-    assert X.dtype.kind == 'f'
+    assert X.dtype.kind == "f"
     batch_size, nc, image_size, _ = X.shape
     assert X.shape == (batch_size, nc, image_size, image_size)
     assert np.all(np.isfinite(X))
@@ -47,17 +49,22 @@ def batched_gen_and_disc(gen_and_disc, n_batches, batch_size):
     n_images : int
         assumed to be multiple of batch size
     """
-    X, scores = zip(*[validate(gen_and_disc(batch_size))
-                      for _ in range(n_batches)])
+    X, scores = zip(
+        *(validate(gen_and_disc(batch_size)) for _ in range(n_batches)),
+    )
     X = np.concatenate(X, axis=0)
     scores = pd.concat(scores, axis=0, ignore_index=True)
     return X, scores
 
 
-def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
-                           calib_dict,
-                           dump_fname=None,
-                           label='label'):
+def discriminator_analysis(
+    scores_fake_df,
+    scores_real_df,
+    ref_method,
+    calib_dict,
+    dump_fname=None,
+    label="label",
+):
     """
     scores_fake_df : DataFrame, shape (n, n_discriminators)
     scores_real_df : DataFrame, shape (n, n_discriminators)
@@ -67,10 +74,15 @@ def discriminator_analysis(scores_fake_df, scores_real_df, ref_method,
     clf_df : DataFrame, shape (n_calibrators, n_discriminators)
     """
     # Build combined data set dataframe and train calibrators
-    pred_df, y_true = cl.combine_class_df(neg_class_df=scores_fake_df,
-                                          pos_class_df=scores_real_df)
-    pred_df, y_true, clf_df = cl.calibrate_pred_df(pred_df, y_true, 
-                                                   calibrators=calib_dict)
+    pred_df, y_true = cl.combine_class_df(
+        neg_class_df=scores_fake_df,
+        pos_class_df=scores_real_df,
+    )
+    pred_df, y_true, clf_df = cl.calibrate_pred_df(
+        pred_df,
+        y_true,
+        calibrators=calib_dict,
+    )
     # Make methods flat to be compatible with benchmark tools
     pred_df.columns = cl.flat_cols(pred_df.columns)
     # ref_method = cl.flat(ref_method)  # Make it flat as well
@@ -117,8 +129,7 @@ def base(score, score_max=None):
     return idx, 1.0
 
 
-def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
-                    pickers):
+def enhance_samples(scores_df, scores_max, scores_real_df, clf_df, pickers):
     """
     Return selected image (among a batch on n images) for each picker.
     scores_df : DataFrame, shape (n, n_discriminators)
@@ -131,14 +142,24 @@ def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
 
     init_idx = np.random.choice(len(scores_real_df))
 
-    picked = pd.DataFrame(data=0, index=pickers.keys(), columns=clf_df.index,
-                          dtype=int)
-    cap_out = pd.DataFrame(data=False,
-                           index=pickers.keys(), columns=clf_df.index,
-                           dtype=bool)
-    alpha = pd.DataFrame(data=np.nan,
-                         index=pickers.keys(), columns=clf_df.index,
-                         dtype=float)
+    picked = pd.DataFrame(
+        data=0,
+        index=pickers.keys(),
+        columns=clf_df.index,
+        dtype=int,
+    )
+    cap_out = pd.DataFrame(
+        data=False,
+        index=pickers.keys(),
+        columns=clf_df.index,
+        dtype=bool,
+    )
+    alpha = pd.DataFrame(
+        data=np.nan,
+        index=pickers.keys(),
+        columns=clf_df.index,
+        dtype=float,
+    )
     for disc_name in sorted(scores_df.columns):
         assert isinstance(disc_name, str)
         s0 = scores_real_df[disc_name].values[init_idx]
@@ -149,7 +170,7 @@ def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
             calibrator = clf_df[(disc_name, calib_name)]
             s_ = np.concatenate(([s0], scores_df[disc_name].values))
             s_ = calibrator.predict(s_)
-            s_max, = calibrator.predict(np.array([scores_max[disc_name]]))
+            (s_max,) = calibrator.predict(np.array([scores_max[disc_name]]))
             for picker_name in sorted(pickers.keys()):
                 assert isinstance(picker_name, str)
                 # print(f"picker name = {picker_name}")
@@ -168,11 +189,16 @@ def enhance_samples(scores_df, scores_max, scores_real_df, clf_df,
     return picked, cap_out, alpha
 
 
-def enhance_samples_series(g_d_f, scores_real_df, clf_df,
-                           pickers, n_images=16,
-                           batch_size=16,
-                           chain_batches=10,
-                           max_est_batches=156):
+def enhance_samples_series(
+    g_d_f,
+    scores_real_df,
+    clf_df,
+    pickers,
+    n_images=16,
+    batch_size=16,
+    chain_batches=10,
+    max_est_batches=156,
+):
     """
     Call enhance_samples multiple times to build up a batch of selected images.
     Stores list of used images X separate from the indices of the images
@@ -192,7 +218,7 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     _, scores_max = batched_gen_and_disc(g_d_f, max_est_batches, batch_size)
     scores_max = scores_max.max(axis=0)
 
-    print('max scores')
+    print("max scores")
     print(scores_max.to_string())
 
     X = []
@@ -203,12 +229,19 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
     picked_num = 0
     all_generated_num = 0
     for nn in range(n_images):
-        X_, scores_fake_df = \
-            batched_gen_and_disc(g_d_f, chain_batches, batch_size)
+        X_, scores_fake_df = batched_gen_and_disc(
+            g_d_f,
+            chain_batches,
+            batch_size,
+        )
         # print(f"Shape of generated random images = {X_.shape}")
-        picked_, cc, aa = \
-            enhance_samples(scores_fake_df, scores_max, scores_real_df, clf_df,
-                            pickers=pickers)
+        picked_, cc, aa = enhance_samples(
+            scores_fake_df,
+            scores_max,
+            scores_real_df,
+            clf_df,
+            pickers=pickers,
+        )
         picked_ = picked_.unstack()  # Convert to series
 
         # Only save the used images for memory, so some index x-from needed
@@ -222,12 +255,12 @@ def enhance_samples_series(g_d_f, scores_real_df, clf_df,
         picked_num += len(add_X)
         all_generated_num += len(X_)
         print(f"number of selected images = {len(add_X)} out of {len(X_)}")
-        
+
         X.extend(add_X)  # Unravel first index to list
         cap_out[nn] = cc.unstack()
         alpha[nn] = aa.unstack()
 
-    acceptence_rate = picked_num/all_generated_num
+    acceptence_rate = picked_num / all_generated_num
     print(f"acceptance rate = {acceptence_rate}")
     X = np.asarray(X)
     assert X.ndim == 4

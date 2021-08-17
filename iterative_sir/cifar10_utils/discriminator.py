@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
-
 from spectralnorm import SpectralNorm
+from torch.autograd import Variable
 
 
 class Discriminator(nn.Module):
@@ -13,22 +12,18 @@ class Discriminator(nn.Module):
         ch = args.ndf
         self.device = args.device
 
-        self.layer1 = self.make_layer(3, ch//8)
-        self.layer2 = self.make_layer(ch//8, ch//4)
-        self.layer3 = self.make_layer(ch//4, ch//2)
-        self.layer4 = SpectralNorm(nn.Conv2d(ch//2, ch, 3, 1, 1), self.args)
-        self.linear = SpectralNorm(nn.Linear(ch*m_g*m_g, 1), self.args)
+        self.layer1 = self.make_layer(3, ch // 8)
+        self.layer2 = self.make_layer(ch // 8, ch // 4)
+        self.layer3 = self.make_layer(ch // 4, ch // 2)
+        self.layer4 = SpectralNorm(nn.Conv2d(ch // 2, ch, 3, 1, 1), self.args)
+        self.linear = SpectralNorm(nn.Linear(ch * m_g * m_g, 1), self.args)
 
     def make_layer(self, in_plane, out_plane):
         return nn.Sequential(
-            SpectralNorm(
-                nn.Conv2d(in_plane, out_plane, 3, 1, 1), self.args
-            ),
+            SpectralNorm(nn.Conv2d(in_plane, out_plane, 3, 1, 1), self.args),
             nn.LeakyReLU(0.1),
-            SpectralNorm(
-                nn.Conv2d(out_plane, out_plane, 4, 2, 1), self.args
-            ),
-            nn.LeakyReLU(0.1)
+            SpectralNorm(nn.Conv2d(out_plane, out_plane, 4, 2, 1), self.args),
+            nn.LeakyReLU(0.1),
         )
 
     def forward(self, x):
@@ -47,6 +42,7 @@ def test_discriminator():
         sn = True
         ndf = 512
         m_g = 4
+
     args = Args()
     dis = Discriminator(args)
     x = Variable(torch.randn(10, 3, 32, 32))

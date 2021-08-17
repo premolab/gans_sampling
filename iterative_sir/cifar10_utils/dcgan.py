@@ -1,28 +1,28 @@
 # https://raw.githubusercontent.com/pytorch/examples/master/dcgan/main.py
-
-from __future__ import print_function
 import argparse
 import os
 import random
-import torch
+
+import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.parallel
-import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
+
 # python dcgan.py --dataset cifar10 --dataroot /scratch/users/vision/yu_dl/raaz.rsk/data/cifar10 --imageSize 32 --cuda --outf out_cifar --manualSeed 13 --niter 100
+
 
 class Generator_cifar10(nn.Module):
     def __init__(self, ngpu, nc=3, nz=100, ngf=64):
-        super(Generator_cifar10, self).__init__()
+        super().__init__()
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(     nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
@@ -34,16 +34,27 @@ class Generator_cifar10(nn.Module):
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
             # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf),
             nn.ReLU(True),
-            nn.ConvTranspose2d(    ngf,      nc, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.Tanh()
+            nn.ConvTranspose2d(
+                ngf,
+                nc,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                bias=False,
+            ),
+            nn.Tanh(),
         )
 
     def forward(self, input):
         if input.is_cuda and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+            output = nn.parallel.data_parallel(
+                self.main,
+                input,
+                range(self.ngpu),
+            )
         else:
             output = self.main(input)
         return output
@@ -51,7 +62,7 @@ class Generator_cifar10(nn.Module):
 
 class Discriminator_cifar10(nn.Module):
     def __init__(self, ngpu, nc=3, ndf=64):
-        super(Discriminator_cifar10, self).__init__()
+        super().__init__()
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is (nc) x 64 x 64
@@ -71,51 +82,117 @@ class Discriminator_cifar10(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
             nn.Conv2d(ndf * 8, 1, 2, 2, 0, bias=False),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
 
     def forward(self, input):
         if input.is_cuda and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+            output = nn.parallel.data_parallel(
+                self.main,
+                input,
+                range(self.ngpu),
+            )
         else:
             output = self.main(input)
 
         return output.view(-1, 1).squeeze(1)
 
+
 class Discriminator_cifar10_logits(nn.Module):
     def __init__(self, discriminator_sigmoid, ngpu, nc=3, ndf=64):
-        super(Discriminator_cifar10_logits, self).__init__()
+        super().__init__()
         self.ngpu = ngpu
         self.main = discriminator_sigmoid.main[:-1]
 
     def forward(self, input):
         if input.is_cuda and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+            output = nn.parallel.data_parallel(
+                self.main,
+                input,
+                range(self.ngpu),
+            )
         else:
             output = self.main(input)
 
         return output.view(-1, 1).squeeze(1)
-    
-if __name__ == '__main__':    
+
+
+if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', required=True, help='cifar10 | lsun | mnist |imagenet | folder | lfw | fake')
-    parser.add_argument('--dataroot', required=True, help='path to dataset')
-    parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
-    parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
-    parser.add_argument('--imageSize', type=int, default=64, help='the height / width of the input image to network')
-    parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
-    parser.add_argument('--ngf', type=int, default=64)
-    parser.add_argument('--ndf', type=int, default=64)
-    parser.add_argument('--niter', type=int, default=25, help='number of epochs to train for')
-    parser.add_argument('--lr', type=float, default=0.0002, help='learning rate, default=0.0002')
-    parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
-    parser.add_argument('--cuda', action='store_true', help='enables cuda')
-    parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
-    parser.add_argument('--netG', default='', help="path to netG (to continue training)")
-    parser.add_argument('--netD', default='', help="path to netD (to continue training)")
-    parser.add_argument('--outf', default='.', help='folder to output images and model checkpoints')
-    parser.add_argument('--manualSeed', type=int, help='manual seed')
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        help="cifar10 | lsun | mnist |imagenet | folder | lfw | fake",
+    )
+    parser.add_argument("--dataroot", required=True, help="path to dataset")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        help="number of data loading workers",
+        default=2,
+    )
+    parser.add_argument(
+        "--batchSize",
+        type=int,
+        default=64,
+        help="input batch size",
+    )
+    parser.add_argument(
+        "--imageSize",
+        type=int,
+        default=64,
+        help="the height / width of the input image to network",
+    )
+    parser.add_argument(
+        "--nz",
+        type=int,
+        default=100,
+        help="size of the latent z vector",
+    )
+    parser.add_argument("--ngf", type=int, default=64)
+    parser.add_argument("--ndf", type=int, default=64)
+    parser.add_argument(
+        "--niter",
+        type=int,
+        default=25,
+        help="number of epochs to train for",
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=0.0002,
+        help="learning rate, default=0.0002",
+    )
+    parser.add_argument(
+        "--beta1",
+        type=float,
+        default=0.5,
+        help="beta1 for adam. default=0.5",
+    )
+    parser.add_argument("--cuda", action="store_true", help="enables cuda")
+    parser.add_argument(
+        "--ngpu",
+        type=int,
+        default=1,
+        help="number of GPUs to use",
+    )
+    parser.add_argument(
+        "--netG",
+        default="",
+        help="path to netG (to continue training)",
+    )
+    parser.add_argument(
+        "--netD",
+        default="",
+        help="path to netD (to continue training)",
+    )
+    parser.add_argument(
+        "--outf",
+        default=".",
+        help="folder to output images and model checkpoints",
+    )
+    parser.add_argument("--manualSeed", type=int, help="manual seed")
 
     opt = parser.parse_args()
     print(opt)
@@ -134,20 +211,30 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     if torch.cuda.is_available() and not opt.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        print(
+            "WARNING: You have a CUDA device, so you should probably run with --cuda",
+        )
 
-
-    dataset = dset.CIFAR10(root=opt.dataroot, download=True,
-                           transform=transforms.Compose([
-                               transforms.Resize(opt.imageSize),
-                               transforms.ToTensor(),
-                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                           ]))
-    nc=3
+    dataset = dset.CIFAR10(
+        root=opt.dataroot,
+        download=True,
+        transform=transforms.Compose(
+            [
+                transforms.Resize(opt.imageSize),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ],
+        ),
+    )
+    nc = 3
 
     assert dataset
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batchSize,
-                                             shuffle=True, num_workers=int(opt.workers))
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=opt.batchSize,
+        shuffle=True,
+        num_workers=int(opt.workers),
+    )
 
     device = torch.device("cuda:0" if opt.cuda else "cpu")
     ngpu = int(opt.ngpu)
@@ -155,27 +242,24 @@ if __name__ == '__main__':
     ngf = int(opt.ngf)
     ndf = int(opt.ndf)
 
-
     # custom weights initialization called on netG and netD
     def weights_init(m):
         classname = m.__class__.__name__
-        if classname.find('Conv') != -1:
+        if classname.find("Conv") != -1:
             m.weight.data.normal_(0.0, 0.02)
-        elif classname.find('BatchNorm') != -1:
+        elif classname.find("BatchNorm") != -1:
             m.weight.data.normal_(1.0, 0.02)
             m.bias.data.fill_(0)
 
     netG = Generator_cifar10(ngpu).to(device)
     netG.apply(weights_init)
-    if opt.netG != '':
+    if opt.netG != "":
         netG.load_state_dict(torch.load(opt.netG))
     print(netG)
 
-
-
     netD = Discriminator_cifar10(ngpu).to(device)
     netD.apply(weights_init)
-    if opt.netD != '':
+    if opt.netD != "":
         netD.load_state_dict(torch.load(opt.netD))
     print(netD)
 
@@ -186,8 +270,16 @@ if __name__ == '__main__':
     fake_label = 0
 
     # setup optimizer
-    optimizerD = optim.Adam(netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-    optimizerG = optim.Adam(netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+    optimizerD = optim.Adam(
+        netD.parameters(),
+        lr=opt.lr,
+        betas=(opt.beta1, 0.999),
+    )
+    optimizerG = optim.Adam(
+        netG.parameters(),
+        lr=opt.lr,
+        betas=(opt.beta1, 0.999),
+    )
 
     for epoch in range(opt.niter):
         for i, data in enumerate(dataloader, 0):
@@ -227,18 +319,39 @@ if __name__ == '__main__':
             D_G_z2 = output.mean().item()
             optimizerG.step()
 
-            print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
-                  % (epoch, opt.niter, i, len(dataloader),
-                     errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
+            print(
+                "[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f"
+                % (
+                    epoch,
+                    opt.niter,
+                    i,
+                    len(dataloader),
+                    errD.item(),
+                    errG.item(),
+                    D_x,
+                    D_G_z1,
+                    D_G_z2,
+                ),
+            )
             if i % 100 == 0:
-                vutils.save_image(real_cpu,
-                        '%s/real_samples.png' % opt.outf,
-                        normalize=True)
+                vutils.save_image(
+                    real_cpu,
+                    "%s/real_samples.png" % opt.outf,
+                    normalize=True,
+                )
                 fake = netG(fixed_noise)
-                vutils.save_image(fake.detach(),
-                        '%s/fake_samples_epoch_%03d.png' % (opt.outf, epoch),
-                        normalize=True)
+                vutils.save_image(
+                    fake.detach(),
+                    "%s/fake_samples_epoch_%03d.png" % (opt.outf, epoch),
+                    normalize=True,
+                )
 
         # do checkpointing
-        torch.save(netG.state_dict(), '%s/netG_epoch_%d.pth' % (opt.outf, epoch))
-        torch.save(netD.state_dict(), '%s/netD_epoch_%d.pth' % (opt.outf, epoch))
+        torch.save(
+            netG.state_dict(),
+            "%s/netG_epoch_%d.pth" % (opt.outf, epoch),
+        )
+        torch.save(
+            netD.state_dict(),
+            "%s/netD_epoch_%d.pth" % (opt.outf, epoch),
+        )

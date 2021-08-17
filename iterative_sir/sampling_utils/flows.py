@@ -1,10 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-
 from pyro.distributions.transforms import AffineCoupling
-#from pyro.nn import DenseNN
+
+
+# from pyro.nn import DenseNN
 
 
 class ConditionalDenseNN(nn.Module):
@@ -37,13 +38,14 @@ class ConditionalDenseNN(nn.Module):
     """
 
     def __init__(
-            self,
-            input_dim,
-            context_dim,
-            hidden_dims,
-            param_dims=[1, 1],
-            nonlinearity=torch.nn.ReLU(),
-            init_weight_scale=1e-3):
+        self,
+        input_dim,
+        context_dim,
+        hidden_dims,
+        param_dims=[1, 1],
+        nonlinearity=torch.nn.ReLU(),
+        init_weight_scale=1e-3,
+    ):
         super().__init__()
 
         self.input_dim = input_dim
@@ -57,10 +59,12 @@ class ConditionalDenseNN(nn.Module):
         # Calculate the indices on the output corresponding to each parameter
         ends = torch.cumsum(torch.tensor(param_dims), dim=0)
         starts = torch.cat((torch.zeros(1).type_as(ends), ends[:-1]))
-        self.param_slices = [slice(s.item(), e.item()) for s, e in zip(starts, ends)]
+        self.param_slices = [
+            slice(s.item(), e.item()) for s, e in zip(starts, ends)
+        ]
 
         # Create masked layers
-        layers = [torch.nn.Linear(input_dim+context_dim, hidden_dims[0])]
+        layers = [torch.nn.Linear(input_dim + context_dim, hidden_dims[0])]
         self.init_params(layers[0].weight)
 
         for i in range(1, len(hidden_dims)):
@@ -75,15 +79,15 @@ class ConditionalDenseNN(nn.Module):
 
     def forward(self, x, context):
         # We must be able to broadcast the size of the context over the input
-        context = context.expand(x.size()[:-1]+(context.size(-1),))
+        context = context.expand(x.size()[:-1] + (context.size(-1),))
 
         x = torch.cat([context, x], dim=-1)
         return self._forward(x)
 
     def init_params(self, params):
-        #torch.nn.init.xavier_uniform_(params, gain=nn.init.calculate_gain('relu'))
-        torch.nn.init.sparse_(params, sparsity=0.3, std = self.init_weight_scale)
-        
+        # torch.nn.init.xavier_uniform_(params, gain=nn.init.calculate_gain('relu'))
+        torch.nn.init.sparse_(params, sparsity=0.3, std=self.init_weight_scale)
+
     def _forward(self, x):
         """
         The forward method
@@ -103,8 +107,7 @@ class ConditionalDenseNN(nn.Module):
                 return h
 
             else:
-                return tuple([h[..., s] for s in self.param_slices])
-
+                return tuple(h[..., s] for s in self.param_slices)
 
 
 class DenseNN(ConditionalDenseNN):
@@ -135,19 +138,20 @@ class DenseNN(ConditionalDenseNN):
     """
 
     def __init__(
-            self,
-            input_dim,
-            hidden_dims,
-            param_dims=[1, 1],
-            nonlinearity=torch.nn.ReLU(),
-            init_weight_scale=1e-3):
-        super(DenseNN, self).__init__(
+        self,
+        input_dim,
+        hidden_dims,
+        param_dims=[1, 1],
+        nonlinearity=torch.nn.ReLU(),
+        init_weight_scale=1e-3,
+    ):
+        super().__init__(
             input_dim,
             0,
             hidden_dims,
             param_dims=param_dims,
             nonlinearity=nonlinearity,
-            init_weight_scale=init_weight_scale
+            init_weight_scale=init_weight_scale,
         )
 
     def forward(self, x):
@@ -155,31 +159,48 @@ class DenseNN(ConditionalDenseNN):
 
 
 class RNVP(nn.Module):
-    def __init__(self, num_flows, dim, flows = None, init_weight_scale=1e-3):
+    def __init__(self, num_flows, dim, flows=None, init_weight_scale=1e-4):
         super().__init__()
         split_dim = dim // 2
         param_dims = [dim - split_dim, dim - split_dim]
         if flows is not None:
             self.flow = nn.ModuleList(flows)
         else:
-            #hypernet = DenseNN(split_dim, [2 * dim], param_dims)
+            # hypernet = DenseNN(split_dim, [2 * dim], param_dims)
 
             self.flow = nn.ModuleList(
                 [
-                    AffineCoupling(split_dim, 
-                        DenseNN(split_dim, [2 * dim], param_dims, init_weight_scale=init_weight_scale)
-                        ) for _ in range(num_flows)
-                        ])
+                    AffineCoupling(
+                        split_dim,
+                        DenseNN(
+                            split_dim,
+                            [2 * dim],
+                            param_dims,
+                            init_weight_scale=init_weight_scale,
+                        ),
+                    )
+                    for _ in range(num_flows)
+                ],
+            )
 
         even = [i for i in range(0, dim, 2)]
         odd = [i for i in range(1, dim, 2)]
-        reverse_eo = [i // 2 if i % 2 == 0 else (i // 2 + len(even)) for i in range(dim)]
-        reverse_oe = [(i // 2 + len(odd)) if i % 2 == 0 else i // 2 for i in range(dim)]
-        self.register_buffer('eo', torch.tensor(even + odd, dtype=torch.int64))
-        self.register_buffer('oe', torch.tensor(odd + even, dtype=torch.int64))
-        self.register_buffer('reverse_eo', torch.tensor(reverse_eo, dtype=torch.int64))
-        self.register_buffer('reverse_oe', torch.tensor(reverse_oe, dtype=torch.int64))
-
+        reverse_eo = [
+            i // 2 if i % 2 == 0 else (i // 2 + len(even)) for i in range(dim)
+        ]
+        reverse_oe = [
+            (i // 2 + len(odd)) if i % 2 == 0 else i // 2 for i in range(dim)
+        ]
+        self.register_buffer("eo", torch.tensor(even + odd, dtype=torch.int64))
+        self.register_buffer("oe", torch.tensor(odd + even, dtype=torch.int64))
+        self.register_buffer(
+            "reverse_eo",
+            torch.tensor(reverse_eo, dtype=torch.int64),
+        )
+        self.register_buffer(
+            "reverse_oe",
+            torch.tensor(reverse_oe, dtype=torch.int64),
+        )
 
     def to(self, *args, **kwargs):
         """
@@ -191,7 +212,6 @@ class RNVP(nn.Module):
         self.reverse_eo = self.reverse_eo.to(*args, **kwargs)
         self.reverse_oe = self.reverse_oe.to(*args, **kwargs)
         return self
-
 
     def permute(self, z, i, reverse=False):
         if not reverse:
@@ -206,7 +226,6 @@ class RNVP(nn.Module):
                 z = torch.index_select(z, 1, self.reverse_oe)
         return z
 
-
     def forward(self, z):
         log_jacob = torch.zeros_like(z[:, 0], dtype=torch.float32)
         for i, current_flow in enumerate(self.flow):
@@ -217,15 +236,14 @@ class RNVP(nn.Module):
             z = z_new
         return z, log_jacob
 
-
     def inverse(self, z):
         log_jacob = torch.zeros_like(z[:, 0], dtype=torch.float32)
-        n = len(self.flow)-1
+        n = len(self.flow) - 1
         for i, current_flow in enumerate(self.flow[::-1]):
-            z = self.permute(z, n-i)
+            z = self.permute(z, n - i)
             z_new = current_flow._inverse(z)
             log_jacob -= current_flow.log_abs_det_jacobian(z_new, z)
-            z_new = self.permute(z_new, n-i, reverse=True)
+            z_new = self.permute(z_new, n - i, reverse=True)
             z = z_new
         return z, log_jacob
 
@@ -237,15 +255,20 @@ class RNVP(nn.Module):
 
 class MLP(nn.Module):
     def __init__(self, layerdims, activation=torch.relu, init_scale=None):
-        super(MLP, self).__init__()
+        super().__init__()
         self.layerdims = layerdims
         self.activation = activation
-        linears = [nn.Linear(layerdims[i], layerdims[i + 1]) for i in range(len(layerdims) - 1)]
-        
+        linears = [
+            nn.Linear(layerdims[i], layerdims[i + 1])
+            for i in range(len(layerdims) - 1)
+        ]
+
         if init_scale is not None:
             for l, layer in enumerate(linears):
-                torch.nn.init.normal_(layer.weight, 
-                                      std=init_scale/np.sqrt(layerdims[l]))
+                torch.nn.init.normal_(
+                    layer.weight,
+                    std=init_scale / np.sqrt(layerdims[l]),
+                )
                 torch.nn.init.zeros_(layer.bias)
 
         self.linears = nn.ModuleList(linears)
@@ -257,18 +280,19 @@ class MLP(nn.Module):
         y = layers[-1][1](x)
         return y
 
+
 class ResidualAffineCoupling(nn.Module):
-    """ Residual Affine Coupling layer 
-    Implements coupling layers with a rescaling 
+    """Residual Affine Coupling layer
+    Implements coupling layers with a rescaling
     Args:
         s (nn.Module): scale network
         t (nn.Module): translation network
-        mask (binary tensor): binary array of same 
+        mask (binary tensor): binary array of same
         dt (float): rescaling factor for s and t
     """
 
     def __init__(self, s=None, t=None, mask=None, dt=1):
-        super(ResidualAffineCoupling, self).__init__()
+        super().__init__()
 
         self.mask = mask
         self.scale_net = s
@@ -288,7 +312,7 @@ class ResidualAffineCoupling(nn.Module):
 
         if inverse:
             if torch.isnan(torch.exp(-s)).any():
-                raise RuntimeError('Scale factor has NaN entries')
+                raise RuntimeError("Scale factor has NaN entries")
             log_det_jac -= s.view(s.size(0), -1).sum(-1)
 
             x = x * torch.exp(-s) - t
@@ -297,13 +321,13 @@ class ResidualAffineCoupling(nn.Module):
             log_det_jac += s.view(s.size(0), -1).sum(-1)
             x = (x + t) * torch.exp(s)
             if torch.isnan(torch.exp(s)).any():
-                raise RuntimeError('Scale factor has NaN entries')
+                raise RuntimeError("Scale factor has NaN entries")
 
         return x, log_det_jac
 
 
 class RealNVP_MLP(nn.Module):
-    """ Minimal Real NVP architecture
+    """Minimal Real NVP architecture
 
     Args:
         dims (int,): input dimension
@@ -315,51 +339,56 @@ class RealNVP_MLP(nn.Module):
         hidden_dim (int): # of hidden neurones per layer (coupling MLPs)
     """
 
-    def __init__(self, dim, n_realnvp_blocks, 
-                 block_depth,
-                 init_weight_scale=None,
-                 prior_arg={'type': 'standn'},
-                 mask_type='half',  
-                 hidden_dim=10,
-                 device='cpu'):
-        super(RealNVP_MLP, self).__init__()
+    def __init__(
+        self,
+        dim,
+        n_realnvp_blocks,
+        block_depth,
+        init_weight_scale=None,
+        prior_arg={"type": "standn"},
+        mask_type="half",
+        hidden_dim=10,
+        device="cpu",
+    ):
+        super().__init__()
 
         self.device = device
         self.dim = dim
         self.n_blocks = n_realnvp_blocks
         self.block_depth = block_depth
-        self.couplings_per_block = 2  # one update of entire layer per block 
-        self.n_layers_in_coupling = 3  # depth of MLPs in coupling layers 
+        self.couplings_per_block = 2  # one update of entire layer per block
+        self.n_layers_in_coupling = 3  # depth of MLPs in coupling layers
         self.hidden_dim_in_coupling = hidden_dim
         self.init_scale_in_coupling = init_weight_scale
 
-        beta_prior = prior_arg['beta']
-        coef = prior_arg['alpha'] * dim
+        # beta_prior = prior_arg["beta"]
+        coef = prior_arg["alpha"] * dim
         prec = torch.eye(dim) * (3 * coef + 1 / coef)
-        prec -= coef * torch.triu(torch.triu(torch.ones_like(prec),
-                                                    diagonal=-1).T, diagonal=-1)
-        prec = prior_arg['beta'] * prec
+        prec -= coef * torch.triu(
+            torch.triu(torch.ones_like(prec), diagonal=-1).T,
+            diagonal=-1,
+        )
+        prec = prior_arg["beta"] * prec
         self.prior_prec = prec.to(device)
-        self.prior_log_det = - torch.logdet(prec)
+        self.prior_log_det = -torch.logdet(prec)
 
         # proposal = MultivariateNormal(
         #     torch.zeros((dim,), device=device),
         #     precision_matrix=prior_prec)
 
-
         mask = torch.ones(dim, device=self.device)
-        if mask_type == 'half':
-            mask[:int(dim / 2)] = 0
-        elif mask_type == 'inter':
+        if mask_type == "half":
+            mask[: int(dim / 2)] = 0
+        elif mask_type == "inter":
             idx = torch.arange(dim, device=self.device)
             mask = mask * (idx % 2 == 0)
         else:
-            raise RuntimeError('Mask type is either half or inter')
+            raise RuntimeError("Mask type is either half or inter")
         self.mask = mask.view(1, dim)
 
         self.coupling_layers = self.initialize()
 
-        self.beta = 1.  # effective temperature needed e.g. in Langevin
+        self.beta = 1.0  # effective temperature needed e.g. in Langevin
 
         # self.prior_arg = prior_arg
 
@@ -424,14 +453,17 @@ class RealNVP_MLP(nn.Module):
         if return_per_block:
             xs = [x]
             log_det_jacs = [log_det_jac]
-        
+
         for block in range(self.n_blocks):
             couplings = self.coupling_layers[::-1][block]
 
             for dt in range(self.block_depth):
                 for coupling_layer in couplings[::-1]:
                     x, log_det_jac = coupling_layer(
-                        x, log_det_jac, inverse=True)
+                        x,
+                        log_det_jac,
+                        inverse=True,
+                    )
 
                 if return_per_block:
                     xs.append(x)
@@ -447,8 +479,9 @@ class RealNVP_MLP(nn.Module):
         coupling_layers = []
 
         for block in range(self.n_blocks):
-            layer_dims = [self.hidden_dim_in_coupling] * \
-                (self.n_layers_in_coupling - 2)
+            layer_dims = [self.hidden_dim_in_coupling] * (
+                self.n_layers_in_coupling - 2
+            )
             layer_dims = [dim] + layer_dims + [dim]
 
             couplings = self.build_coupling_block(layer_dims)
@@ -469,11 +502,10 @@ class RealNVP_MLP(nn.Module):
                 mask = 1 - self.mask
             else:
                 mask = self.mask
-            
+
             dt = self.n_blocks * self.couplings_per_block * self.block_depth
             dt = 2 / dt
-            coupling_layers.append(ResidualAffineCoupling(
-                s, t, mask, dt=dt))
+            coupling_layers.append(ResidualAffineCoupling(s, t, mask, dt=dt))
 
         return coupling_layers
 
@@ -490,7 +522,7 @@ class RealNVP_MLP(nn.Module):
         #     prior_nll = bridge_energy(z, dt=dt, a_min=a_min, b_min=b_min, device=self.device)
         #     return prior_nll - log_det_jac
 
-        prior_ll = - 0.5 * torch.einsum('ki,ij,kj->k', z, self.prior_prec, z)
+        prior_ll = -0.5 * torch.einsum("ki,ij,kj->k", z, self.prior_prec, z)
         prior_ll -= 0.5 * (self.dim * np.log(2 * np.pi) + self.prior_log_det)
 
         ll = prior_ll + log_det_jac

@@ -1,16 +1,17 @@
-import numpy as np
-import pandas as pd
-from scipy.special import logit
-from sklearn.linear_model import LogisticRegression
-from sklearn.isotonic import IsotonicRegression
-from mlpaper.constants import METHOD
 import mlpaper.classification as btc
 import mlpaper.data_splitter as ds
+import numpy as np
+import pandas as pd
+from mlpaper.constants import METHOD
+from scipy.special import logit
+from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import LogisticRegression
 
-LABEL = 'label'
+
+LABEL = "label"
 
 
-class Calibrator(object):
+class Calibrator:
     def fit(self, y_pred, y_true):
         raise NotImplementedError
 
@@ -21,13 +22,13 @@ class Calibrator(object):
     def validate(y_pred, y_true=None):
         y_pred = np.asarray(y_pred)
         assert y_pred.ndim == 1
-        assert y_pred.dtype.kind == 'f'
+        assert y_pred.dtype.kind == "f"
         # assert np.all(0 <= y_pred) and np.all(y_pred <= 1)
 
         if y_true is not None:
             y_true = np.asarray(y_true)
             assert y_true.shape == y_pred.shape
-            assert y_true.dtype.kind == 'b'
+            assert y_true.dtype.kind == "b"
 
         return y_pred, y_true
 
@@ -63,8 +64,11 @@ class Isotonic(Calibrator):
     def __init__(self, y_min, y_max):
         # self.clf = IsotonicRegression(y_min=0.0, y_max=1.0,
         #                              out_of_bounds='clip')
-        self.clf = IsotonicRegression(y_min=y_min, y_max=y_max,
-                                      out_of_bounds='clip')
+        self.clf = IsotonicRegression(
+            y_min=y_min,
+            y_max=y_max,
+            out_of_bounds="clip",
+        )
 
     def fit(self, y_pred, y_true):
         assert y_true is not None
@@ -103,24 +107,30 @@ class Beta2(Calibrator):
     def fit(self, y_pred, y_true):
         assert y_true is not None
         y_pred, y_true = Calibrator.validate(y_pred, y_true)
-        y_pred = np.clip(y_pred.astype(np.float_),
-                         self.epsilon, 1.0 - self.epsilon)
+        y_pred = np.clip(
+            y_pred.astype(np.float_),
+            self.epsilon,
+            1.0 - self.epsilon,
+        )
         y_pred = np.stack((np.log(y_pred), np.log(1.0 - y_pred)), axis=1)
         self.clf.fit(y_pred, y_true)
 
     def predict(self, y_pred):
         y_pred, _ = Calibrator.validate(y_pred)
-        y_pred = np.clip(y_pred.astype(np.float_),
-                         self.epsilon, 1.0 - self.epsilon)
+        y_pred = np.clip(
+            y_pred.astype(np.float_),
+            self.epsilon,
+            1.0 - self.epsilon,
+        )
         y_pred = np.stack((np.log(y_pred), np.log(1.0 - y_pred)), axis=1)
         y_calib = self.clf.predict_proba(y_pred)[:, 1]
         return y_calib
 
 
-CALIB_DICT = {'raw': Identity, 'iso': Isotonic}
+CALIB_DICT = {"raw": Identity, "iso": Isotonic}
 
 
-def flat(tup, delim='_'):
+def flat(tup, delim="_"):
     """
     Join only invertible if delim not in elements.
     """
@@ -129,7 +139,7 @@ def flat(tup, delim='_'):
     return flat_str
 
 
-def flat_cols(cols, delim='_', name=None):
+def flat_cols(cols, delim="_", name=None):
     assert isinstance(cols, pd.MultiIndex)
     cols = pd.Index([flat(tup, delim=delim) for tup in cols.values], name=name)
     return cols
@@ -180,8 +190,11 @@ def calibrate_pred_df(pred_df, y_true, calibrators, calib_frac=0.5):
     y_true_train, y_true_test = y_true[idx], y_true[~idx]
 
     cols = pd.MultiIndex.from_product([pred_df.columns, calibrators.keys()])
-    pred_calib_df = pd.DataFrame(index=range(len(y_true_test)), columns=cols,
-                                 dtype=float)
+    pred_calib_df = pd.DataFrame(
+        index=range(len(y_true_test)),
+        columns=cols,
+        dtype=float,
+    )
     clf_df = pd.Series(index=cols, dtype=object)
     for method in pred_df:
         y_prob = pred_df[method].values
@@ -192,12 +205,15 @@ def calibrate_pred_df(pred_df, y_true, calibrators, calib_frac=0.5):
             clf_df[(method, calib_name)] = clf
 
         for calib_name in calibrators:
-            pred_calib_df.loc[:, (method, calib_name)] = \
-                clf_df[(method, calib_name)].predict(y_prob_test)
+            pred_calib_df.loc[:, (method, calib_name)] = clf_df[
+                (method, calib_name)
+            ].predict(y_prob_test)
 
     assert not pred_calib_df.isnull().any().any()
-    assert pred_calib_df.shape == (len(y_true_test),
-                                   len(pred_df.columns) * len(calibrators))
+    assert pred_calib_df.shape == (
+        len(y_true_test),
+        len(pred_df.columns) * len(calibrators),
+    )
     return pred_calib_df, y_true_test, clf_df
 
 
@@ -231,7 +247,7 @@ def calib_score(y_prob, y_true):
     y_true : ndarray, shape (n,)
         bool
     """
-    assert y_true.dtype.kind == 'b'
+    assert y_true.dtype.kind == "b"
 
     Z = np.sum(y_true - y_prob) / np.sqrt(np.sum(y_prob * (1.0 - y_prob)))
     return Z

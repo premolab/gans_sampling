@@ -1,16 +1,17 @@
-from numpy import *
 import random
 
+from numpy import *
 
-def load_rating_data(file_path='ml-100k/u.data'):
+
+def load_rating_data(file_path="ml-100k/u.data"):
     """
     load movie lens 100k ratings from original rating file.
     need to download and put rating data in /data folder first.
     Source: http://www.grouplens.org/
     """
     prefer = []
-    for line in open(file_path, 'r'):  # 打开指定文件
-        (userid, movieid, rating, ts) = line.split('\t')  # 数据集中每行有4项
+    for line in open(file_path):  # 打开指定文件
+        (userid, movieid, rating, ts) = line.split("\t")  # 数据集中每行有4项
         uid = int(userid)
         mid = int(movieid)
         rat = float(rating)
