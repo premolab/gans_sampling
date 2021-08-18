@@ -1,11 +1,16 @@
-torch >= 1.8.0
 Cython
+easydict
+flax
+jax
+mlpaper
 numpy
-tqdm
-torchvision
-sklearn
+pandas
 POT
 pyro-ppl
-easydict
-pandas
-mlpaper
+seaborn
+sklearn
+statsmodels
+torch >= 1.8.0
+torchvision
+tqdm
+yaml

@@ -1,42 +1,51 @@
-FROM ubuntu:18.04
+ARG UBUNTU=18.04
 
-WORKDIR /app
+FROM ubuntu:$UBUNTU
 
-COPY . /app/
+ARG PROJ="ex2mcmc"
+ARG PYTHON="3.8"
 
-ARG PROJ="iterative_sir"
-ARG PYTHON="python3.8"
-
-RUN apt update && apt install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
+    curl \
+    vim \
     wget \
-    git \
-    build-essential \
-    python3-dev \
-    python3-pip \
-    python3-setuptools
+    git
 
-RUN pip3 -q install pip --upgrade
+RUN wget \
+    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    && mkdir /root/.conda \
+    && bash Miniconda3-latest-Linux-x86_64.sh -b \
+    && rm -f Miniconda3-latest-Linux-x86_64.sh
+ENV PATH "/root/miniconda3/bin:$PATH"
 
-# Anaconda installing
-RUN wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
-RUN bash Anaconda3-5.0.1-Linux-x86_64.sh -b
-RUN rm Anaconda3-5.0.1-Linux-x86_64.sh
+RUN conda --version
+# RUN conda update conda
+# ENV PATH "/root/miniconda3/bin:$PATH"
+# RUN conda update anaconda
+# RUN conda update --all
 
-# Set path to conda
-#ENV PATH /root/anaconda3/bin:$PATH
-ENV PATH /home/ubuntu/anaconda3/bin:$PATH
+SHELL ["/bin/bash", "--login", "-ci"]
 
-# Updating Anaconda packages
-RUN conda update conda
-RUN conda update anaconda
-RUN conda update --all
+RUN conda init bash
 
-RUN conda create --name $PROJ --python $PYTHON
-RUN echo ". /home/ubuntu/miniconda3/etc/profile.d/conda.sh" >> ~/.bashrc
+RUN which pip
 
 RUN pip install poetry
+ENV PATH "/root/.poetry/bin:$PATH"
 RUN poetry config virtualenvs.create false
 
-RUN pip install -r requirements.txt
-RUN pip install -e .
-#RUN poetry install
+WORKDIR /app
+COPY . /app/
+
+RUN conda create -y --name $PROJ python=$PYTHON
+# activate conda environment on each RUN
+RUN echo "conda activate $PROJ" >> ~/.bashrc
+
+# RUN poetry env use 3.8
+# RUN poetry env use $PROJ
+
+RUN poetry install
+
+RUN mkdir -p dump
+RUN mkdir -p figs
+RUN chmod +x ./runs/*

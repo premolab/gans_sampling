@@ -3,4 +3,4 @@ dist_class: CauchyMixture
 scale_proposal: 2.
 n_steps: 1
 params: {}
-dims: [30, 48, 60] #[5, 10, 20, 30]
+dims: [8, 16, 24, 48] #[30, 48, 60] #[5, 10, 20, 30]

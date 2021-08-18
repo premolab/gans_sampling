@@ -243,6 +243,7 @@ def main(config, run=True):
             loc_proposal = torch.zeros(dim).to(device)
             scale_proposal = config.scale_proposal * torch.ones(dim).to(device)
             proposal = IndependentNormal(
+                dim=dim,
                 loc=loc_proposal,
                 scale=scale_proposal,
                 device=device,

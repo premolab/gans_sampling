@@ -587,6 +587,7 @@ class MALATransition:
         loc = torch.zeros(z_dim).to(device)
         scale = torch.ones(z_dim).to(device)
         self.stand_normal = IndependentNormal(
+            dim=z_dim,
             device=device,
             loc=loc,
             scale=scale,
