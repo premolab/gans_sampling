@@ -42,7 +42,11 @@ conda activate ex2mcmc
 ```
 
 ```bash
-pip install portry
+pip install poetry
+```
+
+```bash
+poetry install
 ```
 
 
