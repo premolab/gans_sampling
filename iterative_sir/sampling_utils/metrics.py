@@ -364,8 +364,8 @@ def autocovariance(X, tau=0):
     return s / (dT - tau)
 
 
-def acl_spectrum(X, n=150, scale=1):
-    scale = np.sqrt(autocovariance(X, tau=0))
+def acl_spectrum(X, n=150, scale=None):
+    scale = np.array(scale) if scale is not None else np.sqrt(autocovariance(X, tau=0))
     return np.stack(
         [
             autocovariance(X / (scale[None, ...] + 1e-7), tau=t)

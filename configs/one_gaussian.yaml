@@ -20,4 +20,4 @@ methods:
       N: 10
       corr_coef: 0.95 #0.9
       bernoulli_prob_corr: 1.0 #0.9
-    color: "tab:cyan"
+    color: "tab:orange"

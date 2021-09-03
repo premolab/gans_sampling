@@ -39,7 +39,7 @@ methods:
       bernoulli_prob_corr: 0.5
       n_steps : 800
     every : 100
-    color : "tab:cyan"
+    color : "tab:orange"
 
   ULA:
     mcmc_class: ULA

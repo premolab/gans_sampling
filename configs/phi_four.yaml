@@ -1,9 +1,9 @@
 device: cpu
 figpath: figs
-respath: dump/complex_geom
+respath: dump/phi_four
 data_root: data
 
-trunc_chain_len: 1000
+trunc_chain_len: 2500
 batch_size: 100
 
 # 'tab:blue'
@@ -17,7 +17,7 @@ batch_size: 100
 # 'tab:olive'
 # 'tab:cyan'
 
-N: 200
+N: 100
 dim_phys: 1
 prior_type: coupled
 prior_a: 1
@@ -26,9 +26,9 @@ b_field: 0
 beta: 20.0
 tilt_value: null
 tilt_lambda: null
-depth_blocks: 4
+depth_blocks: 2
 hidden_dim: 50
-ratio_pos_init: -1 #0.5
+ratio_pos_init: 0.5 #-1
 
 methods:
   # MALA:
@@ -61,87 +61,92 @@ methods:
   #     bernoulli_prob_corr: 0.5
   #     mala_steps: 1
 
-  "FlEx$^2$MCMC, N=10, w corr":
+  "FlEx$^2$MCMC, w corr":
     mcmc_class: Ex2MCMC
+    short_name: flex_N_10_corr
     # ess_rar: 1
     params:
       N: 10
-      grad_step: 0.001 #0.01
-      adapt_stepsize: True
-      corr_coef: 0.9 #0.9
-      bernoulli_prob_corr: 0.5 #0.5
+      #grad_step: 0.001 #0.01
+      #adapt_stepsize: True
+      grad_step: 0.0001
+      corr_coef: 0.9
+      bernoulli_prob_corr: 0.5
       mala_steps: 10
     flow:
-      num_flows: 1
       lr: 0.001
-      batch_size: 100
-      n_steps: 1000 #1000 #1000
-      #burn_in_steps: 0 #10 #1000
+      n_steps: 10000
+      burn_in_steps: 1000
       start_optim: 0 #1000
+    color: 'tab:pink'
 
-  "FlEx$^2$MCMC, N=10, w/o corr":
+  "FlEx$^2$MCMC, w/o corr":
     mcmc_class: Ex2MCMC
+    short_name: flex_N_10
     # ess_rar: 1
     params:
       N: 10
-      grad_step: 0.001 #0.01
-      adapt_stepsize: True
+      #grad_step: 0.001
+      #adapt_stepsize: True
+      grad_step: 0.0001
       mala_steps: 10
     flow:
-      num_flows: 1
       lr: 0.001
-      batch_size: 100
-      n_steps: 1000 #1000 #1000
-      #burn_in_steps: 0 #10 #1000
+      n_steps: 10000
+      burn_in_steps: 1000
       start_optim: 0 #1000
+    color: 'tab:olive'
 
-  # AugmentedULA:
+  "Augmented MALA":
+    mcmc_class: Ex2MCMC
+    short_name: ex_N_2
+    # ess_rar: 1
+    params:
+      N: 2
+      #grad_step: 0.001
+      #adapt_stepsize: True
+      grad_step: 0.0001
+      mala_steps: 10
+    flow:
+      lr: 0.001
+      n_steps: 10000
+      burn_in_steps: 1000
+      start_optim: 0 #1000
+    color: 'tab:gray'
+
+
+
+  # "AugmentedULA":
   #   mcmc_class: AugmentedULA
   #   # ess_rar: 1
   #   params:
-  #     grad_step: 0.0005 #0.01
-  #     ula_steps: 1 #0
+  #     #grad_step: 0.001 #0.01
+  #     #adapt_stepsize: True
+  #     grad_step: 0.0001 #0.01
+  #     mala_steps: 10 #0
   #     n_steps: 1
   #   flow:
-  #     num_flows: 5
   #     lr: 0.001 #0.001
   #     batch_size: 100
-  #     n_steps: 1000 #1000 #1000 #000
-  #     #burn_in_steps: 0 #10 #1000 #1000
+  #     n_steps: 1000 #4000 #1000 #1000 #000
+  #     burn_in_steps: 1000 #10 #1000 #1000
   #     start_optim: 0 #1000
 
-  "AugmentedMALA\n(FlEx$^2$MCMC, N=2, w/o corr)":
-    mcmc_class: Ex2MCMC
-    # ess_rar: 1
-    params:
-      grad_step: 0.001 #0.01
-      adapt_stepsize: True
-      #grad_step: 0.0005 #0.01
-      mala_steps: 10 #0
-      n_steps: 1
-    flow:
-      num_flows: 1
-      lr: 0.001 #0.001
-      batch_size: 100
-      n_steps: 1000 #1000 #1000 #000
-      #burn_in_steps: 0 #10 #1000 #1000
-      start_optim: 0 #1000
-
-  "AugmentedMALA w corr":
-    mcmc_class: Ex2MCMC
-    # ess_rar: 1
-    params:
-      grad_step: 0.001 #0.01
-      adapt_stepsize: True
-      #grad_step: 0.0005 #0.01
-      mala_steps: 10 #0
-      n_steps: 1
-      corr_coef: 0.9 #0.9
-      bernoulli_prob_corr: 0.5 #0.5
-    flow:
-      num_flows: 1
-      lr: 0.001 #0.001
-      batch_size: 100
-      n_steps: 1000 #1000 #1000 #000
-      #burn_in_steps: 0 #10 #1000 #1000
-      start_optim: 0 #1000
+  # "AugmentedMALA w corr":
+  #   mcmc_class: Ex2MCMC
+  #   # ess_rar: 1
+  #   params:
+  #     grad_step: 0.001 #0.01
+  #     adapt_stepsize: True
+  #     #grad_step: 0.0005 #0.01
+  #     mala_steps: 1 #0
+  #     n_steps: 1
+  #     corr_coef: 0.9 #0.9
+  #     bernoulli_prob_corr: 0.5 #0.5
+  #   flow:
+  #     num_flows: 4
+  #     lr: 0.001 #0.001
+  #     batch_size: 100
+  #     n_steps: 3000 #4000 #1000 #1000 #000
+  #     #burn_in_steps: 0 #10 #1000 #1000
+  #     start_optim: 0 #1000

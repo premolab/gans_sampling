@@ -243,7 +243,7 @@ def init_independent_normal(scale, n_dim, device, loc=0.0):
     target_args.device = device
     target_args.loc = loc
     target_args.scale = scale
-    target = IndependentNormal(**target_args)
+    target = IndependentNormal(n_dim, **target_args)
     return target
 
 

@@ -162,7 +162,7 @@ def compute_metrics(sample, target, trunc_chain_len=None):
     return result
 
 
-def plot_metrics(dims, found_both, ess, ess_per_sec, hqr):
+def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
     SMALL_SIZE = 18  # 8
     MEDIUM_SIZE = 20  # 10
     BIGGER_SIZE = 20  # 12
@@ -177,29 +177,45 @@ def plot_metrics(dims, found_both, ess, ess_per_sec, hqr):
 
     fig, axs = plt.subplots(ncols=4, figsize=(20, 5))
 
-    for method_name, arr in found_both.items():
-        axs[0].plot(dims, arr, label=method_name, marker="o")
+    for i, (method_name, arr) in enumerate(found_both.items()):
+        if colors is not None:
+            color = colors[i]
+            axs[0].plot(dims, arr, label=method_name, marker="o", color=color)
+        else:
+            axs[0].plot(dims, arr, label=method_name, marker="o")
     axs[0].set_xlabel("dim")
     axs[0].set_ylabel("captured 2 modes")
     axs[0].grid()
     axs[0].legend()
 
-    for method_name, arr in ess.items():
-        axs[1].plot(dims, arr, label=method_name, marker="o")
+    for i, (method_name, arr) in enumerate(ess.items()):
+        if colors is not None:
+            color = colors[i]
+            axs[1].plot(dims, arr, label=method_name, marker="o", color=color)
+        else:
+            axs[1].plot(dims, arr, label=method_name, marker="o")
     axs[1].set_xlabel("dim")
     axs[1].set_ylabel("ESS")
     axs[1].grid()
     axs[1].legend()
 
-    for method_name, arr in ess_per_sec.items():
-        axs[2].plot(dims, arr, label=method_name, marker="o")
+    for i, (method_name, arr) in enumerate(ess_per_sec.items()):
+        if colors is not None:
+            color = colors[i]
+            axs[2].plot(dims, arr, label=method_name, marker="o", color=color)
+        else:
+            axs[2].plot(dims, arr, label=method_name, marker="o")
     axs[2].set_xlabel("dim")
     axs[2].set_ylabel("ESS per sec")
     axs[2].grid()
     axs[2].legend()
 
-    for method_name, arr in hqr.items():
-        axs[3].plot(dims, arr, label=method_name, marker="o")
+    for i, (method_name, arr) in enumerate(hqr.items()):
+        if colors is not None:
+            color = colors[i]
+            axs[3].plot(dims, arr, label=method_name, marker="o", color=color)
+        else:
+            axs[3].plot(dims, arr, label=method_name, marker="o")
     axs[3].set_xlabel("dim")
     axs[3].set_ylabel("HQR")
     axs[3].grid()
@@ -253,8 +269,10 @@ def main(config, run=True):
             args.loc_proposal,
         )
 
+        colors = []
         for method_name, info in config.methods.items():
             color = info.color
+            colors.append(color)
             print(f"============ {method_name} =============")
             mcmc_class = eval(info.mcmc_class)
             mcmc = mcmc_class(**info.params.dict, dim=dim)
@@ -288,7 +306,7 @@ def main(config, run=True):
             hqr_dict[method_name].append(result["hqr"])
 
     if "figpath" in config.dict:
-        fig = plot_metrics(args.dim, found_both, ess, ess_per_sec, hqr_dict)
+        fig = plot_metrics(args.dim, found_both, ess, ess_per_sec, hqr_dict, colors=colors)
         plt.savefig(Path(config.figpath, "2_gaussians.pdf"))
 
 

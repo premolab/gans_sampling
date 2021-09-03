@@ -180,7 +180,7 @@ def sample_nuts(target, proposal, num_samples=1000):
 def plot_metrics(metrics, ndims, savepath=None, scale=1.0, colors=None):
     axs_names = ["Sliced TV", "ESS", "Euclidean EMD"]  # (on scaled data)']
     ncols = len(axs_names)
-    fig, axs = plt.subplots(ncols=ncols, figsize=(5 * ncols + ncols, 5))
+    fig, axs = plt.subplots(ncols=ncols, figsize=(5 * ncols + ncols, 4))
 
     for (name, res), color in zip(metrics.items(), colors):
         for k, v in res.items():
@@ -381,7 +381,7 @@ def main(config, run=True):
 
             for name, sample in zip(names, samples):
                 # fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
-                fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+                fig, ax = plt.subplots(1, 1, figsize=(4, 4))
                 _, xlim, ylim = target.plot_2d(fig, ax)
 
                 ax.scatter(

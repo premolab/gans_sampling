@@ -283,7 +283,7 @@ def ex2_mcmc_mala(
         z_pushed = z
 
     for step_id in range_gen(n_steps):
-        z_sp.append(z_pushed)
+        z_sp.append(z_pushed.detach().cpu())
 
         if corr_coef == 0 and bernoulli_prob_corr == 0:  # isir
             # z_new = proposal.sample([batch_size, N - 1])
@@ -373,7 +373,7 @@ def ex2_mcmc_mala(
             else:
                 z = z_pushed
 
-    z_sp.append(z_pushed)
+    z_sp.append(z_pushed.detach().cpu())
     acceptance /= n_steps
 
     return z_sp, acceptance, mala_transition.adapt_grad_step
@@ -470,11 +470,15 @@ class FlowMCMC:
         else:
             acc_rate = 1
         out = out[-1]
+        #out = torch.stack(out[-10:], 0).reshape(-1, inp.shape[-1])
 
         nll = -self.target(out).mean().item()
+        #nll = -self.target(torch.stack(out[-10:], 0).reshape(-1, inp.shape[-1])).mean().item()
 
         if do_step:
+            #loss_est, loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
             loss_est, loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
+
             if (
                 len(self.loss_hist) > 0
                 and loss.item() - self.loss_hist[-1] > self.jump_tol
@@ -482,7 +486,8 @@ class FlowMCMC:
                 print("KL wants to jump, terminating learning")
                 return out, nll
 
-            self.loss_hist.append(loss_est.item())
+            #self.loss_hist.append(loss_est.item())
+            self.loss_hist = self.loss_hist[-500:] + [loss_est.item()]
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
@@ -516,7 +521,9 @@ class FlowMCMC:
                 inv=True,
             )  # step_id != 0)# or init_points is not None)
             inp = out.detach().requires_grad_()
-            samples.append(inp)
+            #if len(samples) < 1000
+            #samples = samples[-500:] + [inp.detach().cpu()]
+            samples.append(inp.detach().cpu())
 
             neg_log_likelihood.append(nll)
 

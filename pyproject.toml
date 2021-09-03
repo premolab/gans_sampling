@@ -29,7 +29,7 @@ exclude = '''
 python = "~3.8"
 numpy = "^1.19.4"
 matplotlib = "^3.3.3"
-torch = ">=1.8"
+torch = "~1.8"
 torchvision = ">=0.8.2"
 Cython = ">=0"
 tqdm = "^4.5"
@@ -43,8 +43,8 @@ jax = ">=0"
 jaxlib = ">=0"
 seaborn = ">=0"
 pyyaml = ">=0"
-statsmodels = ">0"
-flax = ">0"
+statsmodels = ">=0"
+flax = ">=0" #0.3.4
 
 [tool.isort]
 src_paths = ["iterative_sir"]

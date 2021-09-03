@@ -80,7 +80,7 @@ def compute_average_mean_posterior(samples, dataset):
 
 
 def plot(res, method_names, colors=None):
-    fig = plt.figure(figsize=(15, 10))
+    fig, ax = plt.subplots(figsize=(4, 6))
 
     SMALL_SIZE = 15  # 8
     MEDIUM_SIZE = 20  # 10
@@ -103,6 +103,14 @@ def plot(res, method_names, colors=None):
     plt.xticks(np.arange(len(method_names)), method_names)  # , fontsize = 20 )
     plt.grid()
 
+    # degrees = 70
+    # plt.xticks(rotation=degrees)
+
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=60, fontsize=MEDIUM_SIZE, ha="right", rotation_mode="anchor")
+    plt.setp(ax.yaxis.get_majorticklabels(), fontsize=MEDIUM_SIZE) #, ha="right", rotation_mode="anchor")
+
+    fig.tight_layout()
+
     return fig
 
 
@@ -112,6 +120,7 @@ def parse_arguments():
     parser.add_argument("--dataset_config", type=str)
     parser.add_argument("--dataset", type=str, default="covertype")
     parser.add_argument("--n_steps", type=int, default=None)
+    parser.add_argument("--result_path", type=str)
     # parser.add_argument('--save_metric', action='store_true')
     # parser.add_argument('--plot')
     args = parser.parse_args()
@@ -119,97 +128,105 @@ def parse_arguments():
     return args
 
 
-def main(dataset, config):
+def main(dataset, config, run=True):
     n_steps = config.n_steps
     trunc_chain_len = int(0.5 * n_steps)
 
     target = BayesianLogRegression(dataset, device=config.device)
     dim = target.d
-    proposal = IndependentNormal(dim=dim, device=config.device)
-
     metrics = MetricsTracker(fields=["method", "ess", "ess_per_s", "time"])
-    samples = []
-    colors = []
 
-    for method_name, info in config.methods.items():
-        print(f"========= {method_name} ========== ")
-        params = info.params  # ['params']
-        colors.append(info.color)
-        try:
-            mcmc_class = eval(info.mcmc_class)
-            # print(mcmc_class)
-            # assert isinstance(mcmc_class, AbstractMCMC)
-        except KeyError:
-            print("Can't understand class")
+    if run:
+        proposal = IndependentNormal(dim=dim, device=config.device)
+        colors = []
+        samples = []
 
-        params = params.dict
-        # print(params)
-        if "lr" in params:
-            params["lr"] = eval(params["lr"])
+        for method_name, info in config.methods.items():
+            print(f"========= {method_name} ========== ")
+            params = info.params  # ['params']
+            colors.append(info.color)
+            try:
+                mcmc_class = eval(info.mcmc_class)
+                # print(mcmc_class)
+                # assert isinstance(mcmc_class, AbstractMCMC)
+            except KeyError:
+                print("Can't understand class")
 
-        mcmc = mcmc_class(**params, dim=dim)
-        if "flow" in info.dict.keys():
-            verbose = mcmc.verbose
-            mcmc.verbose = False
-            flow = RNVP(info.flow.num_flows, dim=dim)
+            params = params.dict
+            # print(params)
+            if "lr" in params:
+                params["lr"] = eval(params["lr"])
 
-            flow_mcmc = FlowMCMC(
-                target,
-                proposal,
-                flow,
-                mcmc,
-                batch_size=info.flow.batch_size,
-                lr=info.flow.lr,
+            mcmc = mcmc_class(**params, dim=dim)
+            if "flow" in info.dict.keys():
+                verbose = mcmc.verbose
+                mcmc.verbose = False
+                flow = RNVP(info.flow.num_flows, dim=dim)
+
+                flow_mcmc = FlowMCMC(
+                    target,
+                    proposal,
+                    flow,
+                    mcmc,
+                    batch_size=info.flow.batch_size,
+                    lr=info.flow.lr,
+                )
+                flow.train()
+                out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
+                #
+                assert not torch.isnan(next(flow.parameters())[0, 0]).item()
+
+                flow.eval()
+                mcmc.flow = flow
+                mcmc.verbose = verbose
+
+            start = proposal.sample([config.batch_size])
+
+            s = time.time()
+            out = mcmc(start, target, proposal, n_steps=n_steps)
+            e = time.time()
+            elapsed = e - s  # / 60
+            if isinstance(out, tuple):
+                sample = out[0]
+            else:
+                sample = out
+
+            # ess_arr = []
+            sample = torch.stack(sample, 0).detach().cpu().numpy()
+            trunc_sample = sample[-trunc_chain_len:]
+            batch_size = sample.shape[1]
+            ess = ESS(
+                acl_spectrum(trunc_sample - trunc_sample.mean(0)[None, ...]),
             )
-            flow.train()
-            out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
-            #
-            assert not torch.isnan(next(flow.parameters())[0, 0]).item()
+            assert ess.shape[0] == batch_size
+            print(
+                f"Method: {method_name}, ESS: {ess.mean():.4f}, sampling time: {elapsed:.2f}, ESS/s: {ess.mean()*n_steps/elapsed:.2f}",
+            )
 
-            flow.eval()
-            mcmc.flow = flow
-            mcmc.verbose = verbose
+            samples.append(sample)
+            metrics.stor.method.append(method_name)
+            metrics.stor.ess.append(ess)
+            metrics.stor.time.append(elapsed)
 
-        start = proposal.sample([config.batch_size])
+        mean_post = compute_average_mean_posterior(samples, dataset)
 
-        s = time.time()
-        out = mcmc(start, target, proposal, n_steps=n_steps)
-        e = time.time()
-        elapsed = e - s  # / 60
-        if isinstance(out, tuple):
-            sample = out[0]
-        else:
-            sample = out
+        print(np.array(mean_post).mean(1))
+        print(np.median(mean_post, 1))
 
-        # ess_arr = []
-        sample = torch.stack(sample, 0).detach().cpu().numpy()
-        trunc_sample = sample[-trunc_chain_len:]
-        batch_size = sample.shape[1]
-        ess = ESS(
-            acl_spectrum(trunc_sample - trunc_sample.mean(0)[None, ...]),
-        )
-        assert ess.shape[0] == batch_size
-        print(
-            f"Method: {method_name}, ESS: {ess.mean():.4f}, sampling time: {elapsed:.2f}, ESS/s: {ess.mean()*n_steps/elapsed:.2f}",
-        )
+        sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
 
-        samples.append(sample)
-        metrics.stor.method.append(method_name)
-        metrics.stor.ess.append(ess)
-        metrics.stor.time.append(elapsed)
+        if "respath" in config.dict:
+            resdir = Path(config.respath, config.dataset)
+            resdir.mkdir(parents=True, exist_ok=True)
+            respath = Path(resdir, f"{sub}.npy")
+            np.save(respath.open("wb"), mean_post)
 
-    mean_post = compute_average_mean_posterior(samples, dataset)
-
-    print(np.array(mean_post).mean(1))
-    print(np.median(mean_post, 1))
-
-    sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
-
-    if "respath" in config.dict:
-        resdir = Path(config.respath, config.dataset)
-        resdir.mkdir(parents=True, exist_ok=True)
-        respath = Path(resdir, f"{sub}.npy")
-        np.save(respath.open("wb"), mean_post)
+    else:
+        mean_post = np.load(Path(config.respath).open("rb")).T
+        colors = []
+        for method_name, info in config.methods.items():
+            colors.append(info.color)
+            metrics.stor.method.append(method_name)
 
     if "figpath" in config.dict:
         fig = plot(mean_post, metrics.stor.method, colors)
@@ -242,4 +259,10 @@ if __name__ == "__main__":
         c2=dataset_config.c2,
     )
 
-    main(dataset, config)
+    if args.result_path is not None:
+        run = False
+        config.respath = args.result_path
+    else:
+        run = True
+
+    main(dataset, config, run)
