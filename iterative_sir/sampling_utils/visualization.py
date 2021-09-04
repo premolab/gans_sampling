@@ -791,49 +791,52 @@ def plot_chain_metrics(
     savepath=None,
     sigma=0.05,
     std=True,
+    keys=["mode_std", "hqr", "jsd", "n_found_modes", "emd"]
 ):
     instance = list(evols.values())[0]
-    keys = ["mode_std", "hqr", "jsd", "n_found_modes", "emd"]
+    #keys = ["mode_std", "hqr", "jsd", "n_found_modes", "emd"]
     ncols = int(np.sum([int(len(instance[k]) > 0) for k in keys]))
 
-    fig, axs = plt.subplots(ncols=ncols, nrows=1, figsize=(6 * ncols, 6))
+    fig, axs = plt.subplots(ncols=ncols, nrows=1, figsize=(6 * ncols, 6), squeeze=False)
+    axs = axs[0]
+
     # fig, axs = plt.subplots(ncols=3, nrows=2, figsize=(6*3, 12))#ncols, nrows=1, figsize=(6*ncols, 6))
     # axs = axs.flatten()
 
     if name is not None:
         fig.suptitle(name)
     k = 0
-    if sigma is not None and len(instance["mode_std"]) > 0:
+    if sigma is not None and len(instance["mode_std"][0]) > 0:
         axs[k].axhline(sigma, label="real", color="black")
-        axs[k].set_xlabel("iter")
+        axs[k].set_xlabel("Iterations")
         axs[k].set_ylabel("mode std")
         axs[k].set_title("Estimation of mode std of samples")
         k += 1
 
-    if len(instance["hqr"]) > 0:
+    if len(instance["hqr"][0]) > 0:
         axs[k].axhline(1, label="real", color="black")
-        axs[k].set_xlabel("iter")
-        axs[k].set_ylabel("high quality rate")
+        axs[k].set_xlabel("Iterations")
+        axs[k].set_ylabel("HQR")
         axs[k].set_title("High quality rate of samples")
         k += 1
 
-    if len(instance["jsd"]) > 0:
+    if len(instance["jsd"][0]) > 0:
         axs[k].axhline(0, label="real", color="black")
-        axs[k].set_xlabel("iter")
+        axs[k].set_xlabel("Iterations")
         axs[k].set_ylabel("JSD")
-        axs[k].set_title("JSD between uniform and empirical distributions")
+        axs[k].set_title(r"JSD btw. $U\{1, M+1\}$ and empirical dist.")
         k += 1
 
-    if len(instance["n_found_modes"]) > 0:
+    if len(instance["n_found_modes"][0]) > 0:
         # axs[k].axhline(25, label='real', color='black')
-        axs[k].set_xlabel("iter")
+        axs[k].set_xlabel("Iterations")
         axs[k].set_ylabel("# of captured modes")
         axs[k].set_title("Number of captured modes")
         k += 1
 
-    if len(instance["emd"]) > 0:
+    if len(instance["emd"][0]) > 0:
         axs[k].axhline(0, label="real", color="black")
-        axs[k].set_xlabel("iter")
+        axs[k].set_xlabel("Iterations")
         axs[k].set_ylabel("EMD")
         axs[k].set_title("Earth Mover's Distance")
         k += 1

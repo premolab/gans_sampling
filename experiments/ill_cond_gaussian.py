@@ -124,8 +124,8 @@ def main(config, run=True):
             )
 
         if "figpath" in config.dict.keys():
-            MEDIUM_SIZE = 20  # 10
-            BIGGER_SIZE = 20  # 12
+            MEDIUM_SIZE = 22  # 10
+            BIGGER_SIZE = 22  # 12
 
             plt.rc("font", size=MEDIUM_SIZE)  # controls default text sizes
             plt.rc("axes", titlesize=BIGGER_SIZE)  # fontsize of the axes title

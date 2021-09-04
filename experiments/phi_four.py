@@ -255,7 +255,7 @@ def main(config, run=True):
 
             # prop = proposal.sample((10,))
             prop = torch.zeros(1, dim)
-            x_gen = mcmc(prop, target, proposal, flow=flow, n_steps=11)
+            x_gen = mcmc(prop, target, proposal, flow=flow, n_steps=21)
             # x_gen = mcmc(prop, target, proposal, flow=None, n_steps=100)
             if isinstance(x_gen, Tuple):
                 x_gen = x_gen[0]
@@ -263,8 +263,8 @@ def main(config, run=True):
             mixing_samples.append(torch.stack(x_gen[1:], 0).reshape(-1, dim))
 
     if "figpath" in config.dict.keys():
-        MEDIUM_SIZE = 20  # 10
-        BIGGER_SIZE = 20  # 12
+        MEDIUM_SIZE = 23  # 10
+        BIGGER_SIZE = 23  # 12
 
         plt.rc("font", size=MEDIUM_SIZE)  # controls default text sizes
         plt.rc("axes", titlesize=BIGGER_SIZE)  # fontsize of the axes title

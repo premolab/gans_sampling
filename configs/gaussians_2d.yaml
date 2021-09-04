@@ -1,7 +1,7 @@
 batch_size : 50 #5000
-n_steps : 400
-every : 50
-n_chunks : 8
+# n_steps : 400
+# every : 50
+n_chunks : 5
 train_size : 5000
 sigma : 0.05
 random_seed : 42
@@ -23,31 +23,31 @@ data_root: data
 # 'tab:cyan'
 
 methods:
-  ISIR:
-    mcmc_class: CISIR
-    params:
-      N: 5
-      n_steps : 800
-    every : 100
-    color : "tab:blue"
+  # ISIR:
+  #   mcmc_class: CISIR
+  #   params:
+  #     N: 5
+  #     n_steps : 800
+  #   every : 100
+  #   color : "tab:blue"
 
-  CISIR:
-    mcmc_class: CISIR
-    params:
-      N: 5
-      corr_coef: 0.9
-      bernoulli_prob_corr: 0.5
-      n_steps : 800
-    every : 100
-    color : "tab:orange"
+  # CISIR:
+  #   mcmc_class: CISIR
+  #   params:
+  #     N: 5
+  #     corr_coef: 0.9
+  #     bernoulli_prob_corr: 0.5
+  #     n_steps : 800
+  #   every : 100
+  #   color : "tab:orange"
 
   ULA:
     mcmc_class: ULA
     params:
       grad_step: 0.001
       noise_scale: 0.045
-      n_steps : 800
-    every : 100
+      n_steps : 1000
+    every : 200
     color : "tab:brown"
 
   MALA:
@@ -55,33 +55,33 @@ methods:
     params:
       grad_step: 0.01
       adapt_stepsize: True
-      n_steps : 800
-    every : 100
+      n_steps : 1000
+    every : 200
     color : "tab:green"
 
   "Ex$^2$MCMC w corr":
     mcmc_class: Ex2MCMC
     params:
-      N: 5
+      N: 10
       grad_step: 0.01
       adapt_stepsize: True
       corr_coef: 0.9
       bernoulli_prob_corr: 0.5
       mala_steps: 1
-      n_steps : 800
-    every : 100
+      n_steps : 1000
+    every : 200
     color : "tab:red"
 
-  "Ex$^2$MCMC w/o corr":
-    mcmc_class: Ex2MCMC
-    params:
-      N: 5
-      grad_step: 0.01
-      adapt_stepsize: True
-      mala_steps: 1
-      n_steps : 800
-    every : 100
-    color : "tab:purple"
+  # "Ex$^2$MCMC w/o corr":
+  #   mcmc_class: Ex2MCMC
+  #   params:
+  #     N: 5
+  #     grad_step: 0.01
+  #     adapt_stepsize: True
+  #     mala_steps: 1
+  #     n_steps : 800
+  #   every : 100
+  #   color : "tab:purple"
 
   # FlCISIR:
   #   mcmc_class: CISIR

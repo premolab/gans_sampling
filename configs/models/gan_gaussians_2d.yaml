@@ -1,0 +1,16 @@
+generator:
+    model_class: Generator_fc
+    params:
+      n_layers: 4
+      n_dim: 2
+      n_out: 2
+      n_hid: 100
+    weight_path: models/models_25gaussians/jensen_minimax/2020_12_30-01_38_15_generator.pth
+
+discriminator:
+    model_class: Discriminator_fc
+    params:
+      n_layers: 4
+      n_hid: 100
+      n_in: 2
+    weight_path: models/models_25gaussians/jensen_minimax/2020_12_30-01_38_15_discriminator.pth
