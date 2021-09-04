@@ -106,8 +106,16 @@ def plot(res, method_names, colors=None):
     # degrees = 70
     # plt.xticks(rotation=degrees)
 
-    plt.setp(ax.xaxis.get_majorticklabels(), rotation=60, fontsize=MEDIUM_SIZE, ha="right", rotation_mode="anchor")
-    plt.setp(ax.yaxis.get_majorticklabels(), fontsize=MEDIUM_SIZE) #, ha="right", rotation_mode="anchor")
+    plt.setp(
+        ax.xaxis.get_majorticklabels(),
+        rotation=60,
+        fontsize=MEDIUM_SIZE,
+        ha="right",
+        rotation_mode="anchor",
+    )
+    plt.setp(
+        ax.yaxis.get_majorticklabels(), fontsize=MEDIUM_SIZE
+    )  # , ha="right", rotation_mode="anchor")
 
     fig.tight_layout()
 

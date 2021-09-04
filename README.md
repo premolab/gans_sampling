@@ -34,7 +34,6 @@ To complete while we advance to NeurIPS !! :)
   - [Installation](#installation)
     - [With docker](#with-docker)
     - [Or without docker](#or-without-docker)
-  - [Usage](#usage)
   - [Some results](#some-results)
   - [Acknoledgements](#acknoledgements)
 
@@ -63,24 +62,10 @@ conda activate ex2mcmc
 
 ```bash
 pip install poetry
-rm -f poetry.lock
+```
+
+```bash
 poetry install
-```
-
-```bash
-mkdir -p dump
-mkdir -p figs
-chmod +x ./runs/*
-```
-
-## Usage
-
-```bash
-./runs/bayesian_lr.sh
-```
-
-```bash
-python two_gaussians.py configs/2_gaussians.yaml
 ```
 
 ## Some results

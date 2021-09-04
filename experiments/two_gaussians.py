@@ -306,7 +306,9 @@ def main(config, run=True):
             hqr_dict[method_name].append(result["hqr"])
 
     if "figpath" in config.dict:
-        fig = plot_metrics(args.dim, found_both, ess, ess_per_sec, hqr_dict, colors=colors)
+        fig = plot_metrics(
+            args.dim, found_both, ess, ess_per_sec, hqr_dict, colors=colors
+        )
         plt.savefig(Path(config.figpath, "2_gaussians.pdf"))
 
 

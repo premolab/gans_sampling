@@ -183,7 +183,7 @@ def main(config, run=True):
             respath = Path(resdir, f"{sub}.npy")
             pickle.dump(method_metric_dict, respath.open("wb"))
     else:
-        method_metric_dict = pickle.load(Path(config.respath).open('rb'))
+        method_metric_dict = pickle.load(Path(config.respath).open("rb"))
         colors = []
         for method_name, info in config.methods.items():
             colors.append(info.color)

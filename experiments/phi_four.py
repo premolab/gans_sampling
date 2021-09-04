@@ -9,22 +9,16 @@ import torch
 import yaml
 from easydict import EasyDict as edict
 from matplotlib import pyplot as plt
-from torch.distributions.multivariate_normal import MultivariateNormal
 from pyro.ops.stats import autocorrelation
-
+from torch.distributions.multivariate_normal import MultivariateNormal
 from utils import DotConfig, random_seed
 
-from iterative_sir.sampling_utils.adaptive_mc import (
-    CISIR,
-    Ex2MCMC,
-    FlowMCMC,
-)
+from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC, FlowMCMC
 from iterative_sir.sampling_utils.adaptive_sir_loss import MixKLLoss
 from iterative_sir.sampling_utils.distributions import (
     IndependentNormal,
     PhiFour,
 )
-
 from iterative_sir.sampling_utils.flows import RNVP, RealNVP_MLP
 from iterative_sir.sampling_utils.metrics import ESS, acl_spectrum
 
@@ -35,7 +29,7 @@ sns.set_theme(style="ticks", palette="deep")
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("config")
-    parser.add_argument('--result_path', type=str)
+    parser.add_argument("--result_path", type=str)
     # parser.add_argument('-id', '--slurm-id', type=str, default=str(random_id))
 
     config = parser.parse_args()
@@ -146,11 +140,7 @@ def main(config, run=True):
                 prior_arg=prior_arg,
             ).to(device)
             x_init = construct_init(
-                config.batch_size,
-                dim,
-                target,
-                proposal,
-                config.ratio_pos_init
+                config.batch_size, dim, target, proposal, config.ratio_pos_init
             ).to(device)
 
             if run:
@@ -162,7 +152,7 @@ def main(config, run=True):
                         x_init,
                         target,
                         proposal,
-                        flow=None,#flow,
+                        flow=None,  # flow,
                         n_steps=info.flow.burn_in_steps,
                         verbose=True,
                     )
@@ -178,7 +168,9 @@ def main(config, run=True):
                                 c="b",
                             )
 
-                        plt.savefig(Path(config.figpath, "allen_cahn_burn_in.pdf"))
+                        plt.savefig(
+                            Path(config.figpath, "allen_cahn_burn_in.pdf")
+                        )
                         plt.close()
                 else:
                     burn_in_sample = []
@@ -191,7 +183,7 @@ def main(config, run=True):
                     proposal,
                     flow,
                     mcmc,
-                    batch_size=config.batch_size, #info.flow.batch_size,
+                    batch_size=config.batch_size,  # info.flow.batch_size,
                     lr=info.flow.lr,
                     loss=loss,
                 )
@@ -200,26 +192,32 @@ def main(config, run=True):
                     n_steps=info.flow.n_steps,
                     init_points=x_init,
                     start_optim=info.flow.start_optim,
-                    #alpha=1.0,
+                    # alpha=1.0,
                 )
-                if 'respath' in config.dict.keys():
+                if "respath" in config.dict.keys():
                     sub = datetime.now().strftime("%d-%m-%Y_%H:%M")
                     Path(config.respath).mkdir(exist_ok=True, parents=True)
-                    #method_name_ = '_'.join(method_name.split('/'))
-                    torch.save({
-                        'flow_state_dict': flow.state_dict(),
-                    }, Path(config.respath, f'{info.short_name}_{sub}.pth'))
+                    # method_name_ = '_'.join(method_name.split('/'))
+                    torch.save(
+                        {
+                            "flow_state_dict": flow.state_dict(),
+                        },
+                        Path(config.respath, f"{info.short_name}_{sub}.pth"),
+                    )
 
-                #scale = 1
+                # scale = 1
                 X = np.stack(burn_in_sample + out_samples, 0)
                 n = X.shape[0]
-                #acl_time = acl_spectrum(X - X.mean(0)[None, ...], n=n, scale=scale).mean(-1).mean(-1)
+                # acl_time = acl_spectrum(X - X.mean(0)[None, ...], n=n, scale=scale).mean(-1).mean(-1)
                 acl_time = acl_spectrum(X[:, :10, :], n=n).mean(-1).mean(-1)
-                print('acl computed')
-                if 'respath' in config.dict.keys():
+                print("acl computed")
+                if "respath" in config.dict.keys():
                     # sub = datetime.now().strftime("%d-%m-%Y_%H:%M")
                     # Path(config.respath).mkdir(exist_ok=True, parents=True)
-                    np.save(Path(config.respath, f'{info.short_name}_{sub}'), acl_time)
+                    np.save(
+                        Path(config.respath, f"{info.short_name}_{sub}"),
+                        acl_time,
+                    )
 
                 # del acl_time
                 # del out_samples
@@ -230,10 +228,20 @@ def main(config, run=True):
                 neg_log_likelihood.append(nll)
 
             else:
-                model_path = sorted(Path(config.respath).glob(f'{info.short_name}_0*.pth'))[-1]
-                flow.load_state_dict(torch.load(model_path)['flow_state_dict'])
-                acl_time = np.load(sorted(Path(config.respath).glob(f'{info.short_name}_0*.npy'))[-1])
-                print(sorted(Path(config.respath).glob(f'{info.short_name}*.npy'))[-1])
+                model_path = sorted(
+                    Path(config.respath).glob(f"{info.short_name}_0*.pth")
+                )[-1]
+                flow.load_state_dict(torch.load(model_path)["flow_state_dict"])
+                acl_time = np.load(
+                    sorted(
+                        Path(config.respath).glob(f"{info.short_name}_0*.npy")
+                    )[-1]
+                )
+                print(
+                    sorted(
+                        Path(config.respath).glob(f"{info.short_name}*.npy")
+                    )[-1]
+                )
                 print(info.short_name, acl_time.shape)
 
             acl_times.append(acl_time[1:-50])
@@ -248,10 +256,10 @@ def main(config, run=True):
             # prop = proposal.sample((10,))
             prop = torch.zeros(1, dim)
             x_gen = mcmc(prop, target, proposal, flow=flow, n_steps=11)
-            #x_gen = mcmc(prop, target, proposal, flow=None, n_steps=100)
+            # x_gen = mcmc(prop, target, proposal, flow=None, n_steps=100)
             if isinstance(x_gen, Tuple):
                 x_gen = x_gen[0]
-            #mixing_samples.append(x_gen[-1])
+            # mixing_samples.append(x_gen[-1])
             mixing_samples.append(torch.stack(x_gen[1:], 0).reshape(-1, dim))
 
     if "figpath" in config.dict.keys():
@@ -267,7 +275,7 @@ def main(config, run=True):
         plt.rc("figure", titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
         names = config.methods.dict.keys()
-        #fig, axs = plt.subplots(ncols=len(names), figsize=(6 * len(names), 5))
+        # fig, axs = plt.subplots(ncols=len(names), figsize=(6 * len(names), 5))
         for sample, name, short_name in zip(flow_samples, names, short_names):
             fig = plt.figure(figsize=(6, 6))
             for i in range(sample.shape[0]):
@@ -277,13 +285,15 @@ def main(config, run=True):
                     c="b",
                     linewidth=3,
                 )
-            #plt.title(fr"{name}")
+            # plt.title(fr"{name}")
             fig.tight_layout()
-            plt.savefig(Path(config.figpath, f"allen_cahn_flow_{short_name}.pdf"))
+            plt.savefig(
+                Path(config.figpath, f"allen_cahn_flow_{short_name}.pdf")
+            )
             plt.close()
 
         if run:
-            fig = plt.figure(figsize=(7,7))
+            fig = plt.figure(figsize=(7, 7))
             for name, nlls in zip(names, neg_log_likelihood):
                 plt.plot(np.arange(len(nlls)), nlls, label=fr"{name}")
 
@@ -309,8 +319,10 @@ def main(config, run=True):
         plt.savefig(Path(config.figpath, "allen_cahn_acl.pdf"))
         plt.close()
 
-        #fig, axs = plt.subplots(ncols=len(names), figsize=(6 * len(names), 5))
-        for sample, name, short_name in zip(mixing_samples, names, short_names):
+        # fig, axs = plt.subplots(ncols=len(names), figsize=(6 * len(names), 5))
+        for sample, name, short_name in zip(
+            mixing_samples, names, short_names
+        ):
             fig = plt.figure(figsize=(6, 6))
             for i in range(len(sample)):
                 plt.plot(
@@ -319,9 +331,11 @@ def main(config, run=True):
                     c="g",
                     linewidth=3,
                 )
-            #plt.title(fr"{name}")
+            # plt.title(fr"{name}")
             fig.tight_layout()
-            plt.savefig(Path(config.figpath, f"allen_cahn_mixing_{short_name}.pdf"))
+            plt.savefig(
+                Path(config.figpath, f"allen_cahn_mixing_{short_name}.pdf")
+            )
             plt.close()
 
         # x_gen = out_samples[-1]

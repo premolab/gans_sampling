@@ -1,10 +1,10 @@
 import argparse
 import pickle
+import time
 import warnings
 from collections import defaultdict
 from pathlib import Path
 
-import time
 import numpy as np
 import seaborn as sns
 import torch
@@ -14,14 +14,13 @@ from matplotlib import pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from utils import DotConfig
 
-from iterative_sir.sampling_utils.metrics import ESS, acl_spectrum
-from iterative_sir.sampling_utils.flows import RNVP
-from iterative_sir.sampling_utils.ebm_sampling import MALA
 from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC, FlowMCMC
-from iterative_sir.sampling_utils.distributions import (
-    #Gaussian,
+from iterative_sir.sampling_utils.distributions import (  # Gaussian,
     IndependentNormal,
 )
+from iterative_sir.sampling_utils.ebm_sampling import MALA
+from iterative_sir.sampling_utils.flows import RNVP
+from iterative_sir.sampling_utils.metrics import ESS, acl_spectrum
 
 
 sns.set_theme(style="ticks", palette="deep")
@@ -39,10 +38,12 @@ def parse_arguments():
 def main(config, run=True):
     colors = []
     dim = config.dim
-    
-    target = IndependentNormal(dim=dim, scale=torch.logspace(-2, 2, dim), device=config.device)
+
+    target = IndependentNormal(
+        dim=dim, scale=torch.logspace(-2, 2, dim), device=config.device
+    )
     dim = target.dim
-    #metrics = MetricsTracker(fields=["method", "ess", "ess_per_s", "time"])
+    # metrics = MetricsTracker(fields=["method", "ess", "ess_per_s", "time"])
     names = config.methods.dict.keys()
 
     if run:
@@ -77,7 +78,7 @@ def main(config, run=True):
                     mcmc,
                     batch_size=info.flow.batch_size,
                     lr=info.flow.lr,
-                    #start_optim=info.flow.start_optim,
+                    # start_optim=info.flow.start_optim,
                     jump_tol=1e3,
                 )
                 flow.train()
@@ -101,16 +102,20 @@ def main(config, run=True):
 
             # ess_arr = []
             sample = torch.stack(sample, 0).detach().cpu().numpy()
-            trunc_sample = sample[-config.trunc_chain_len:]
+            trunc_sample = sample[-config.trunc_chain_len :]
             batch_size = sample.shape[1]
             ess = ESS(
                 acl_spectrum(trunc_sample - trunc_sample.mean(0)[None, ...]),
             )
             assert ess.shape[0] == batch_size
 
-            #scale = 1
-            #scale = target.scale.sum().item() ** .5
-            acl = acl_spectrum(trunc_sample, n=trunc_sample.shape[0]).mean(-1).mean(-1) # - trunc_sample.mean(0)[None, ...])
+            # scale = 1
+            # scale = target.scale.sum().item() ** .5
+            acl = (
+                acl_spectrum(trunc_sample, n=trunc_sample.shape[0])
+                .mean(-1)
+                .mean(-1)
+            )  # - trunc_sample.mean(0)[None, ...])
 
             acl_times.append(acl[:-1])
 
@@ -118,31 +123,44 @@ def main(config, run=True):
                 f"Method: {method_name}, ESS: {ess.mean():.4f}, sampling time: {elapsed:.2f}, ESS/s: {ess.mean()*info.n_steps/elapsed:.2f}",
             )
 
-        if 'figpath' in config.dict.keys():
+        if "figpath" in config.dict.keys():
             MEDIUM_SIZE = 20  # 10
             BIGGER_SIZE = 20  # 12
 
             plt.rc("font", size=MEDIUM_SIZE)  # controls default text sizes
             plt.rc("axes", titlesize=BIGGER_SIZE)  # fontsize of the axes title
-            plt.rc("axes", labelsize=MEDIUM_SIZE)  # fontsize of the x and y labels
-            plt.rc("xtick", labelsize=MEDIUM_SIZE)  # fontsize of the tick labels
-            plt.rc("ytick", labelsize=MEDIUM_SIZE)  # fontsize of the tick labels
+            plt.rc(
+                "axes", labelsize=MEDIUM_SIZE
+            )  # fontsize of the x and y labels
+            plt.rc(
+                "xtick", labelsize=MEDIUM_SIZE
+            )  # fontsize of the tick labels
+            plt.rc(
+                "ytick", labelsize=MEDIUM_SIZE
+            )  # fontsize of the tick labels
             plt.rc("legend", fontsize=MEDIUM_SIZE)  # legend fontsize
-            plt.rc("figure", titlesize=BIGGER_SIZE)  # fontsize of the figure title
+            plt.rc(
+                "figure", titlesize=BIGGER_SIZE
+            )  # fontsize of the figure title
 
             fig = plt.figure(figsize=(7, 6))
             for name, acl, color in zip(names, acl_times, colors):
-                plt.plot(np.arange(len(acl)), acl, label=fr"{name}", color=color, linewidth=3)
+                plt.plot(
+                    np.arange(len(acl)),
+                    acl,
+                    label=fr"{name}",
+                    color=color,
+                    linewidth=3,
+                )
 
             plt.xlabel("Sampling iterations")
             plt.ylabel("Autocorrelation")
-            #plt.xscale("log")
+            # plt.xscale("log")
             plt.grid()
             plt.legend()
             fig.tight_layout()
             plt.savefig(Path(config.figpath, "ill_cond_acl.pdf"))
             plt.close()
-
 
 
 if __name__ == "__main__":

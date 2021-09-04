@@ -470,13 +470,13 @@ class FlowMCMC:
         else:
             acc_rate = 1
         out = out[-1]
-        #out = torch.stack(out[-10:], 0).reshape(-1, inp.shape[-1])
+        # out = torch.stack(out[-10:], 0).reshape(-1, inp.shape[-1])
 
         nll = -self.target(out).mean().item()
-        #nll = -self.target(torch.stack(out[-10:], 0).reshape(-1, inp.shape[-1])).mean().item()
+        # nll = -self.target(torch.stack(out[-10:], 0).reshape(-1, inp.shape[-1])).mean().item()
 
         if do_step:
-            #loss_est, loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
+            # loss_est, loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
             loss_est, loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
 
             if (
@@ -486,7 +486,7 @@ class FlowMCMC:
                 print("KL wants to jump, terminating learning")
                 return out, nll
 
-            #self.loss_hist.append(loss_est.item())
+            # self.loss_hist.append(loss_est.item())
             self.loss_hist = self.loss_hist[-500:] + [loss_est.item()]
             self.optimizer.zero_grad()
             loss.backward()
@@ -521,8 +521,8 @@ class FlowMCMC:
                 inv=True,
             )  # step_id != 0)# or init_points is not None)
             inp = out.detach().requires_grad_()
-            #if len(samples) < 1000
-            #samples = samples[-500:] + [inp.detach().cpu()]
+            # if len(samples) < 1000
+            # samples = samples[-500:] + [inp.detach().cpu()]
             samples.append(inp.detach().cpu())
 
             neg_log_likelihood.append(nll)

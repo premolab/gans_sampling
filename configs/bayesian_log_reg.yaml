@@ -73,4 +73,4 @@ methods:
       lr: 0.01
       batch_size: 100
       n_steps: 200
-    color: 'tab:pink' 
+    color: 'tab:pink'

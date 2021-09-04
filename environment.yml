@@ -1,4 +1,4 @@
-name: gans_sampling
+name: ex2mcmc
 channels:
   - defaults
 dependencies:
