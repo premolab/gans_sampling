@@ -28,7 +28,7 @@ methods:
     params:
       grad_step: 0.001
       noise_scale: 0.045
-      n_steps : 1000
+    n_steps : 1000
     every : 200
     color : "tab:brown"
 
@@ -37,7 +37,7 @@ methods:
     params:
       grad_step: 0.01
       adapt_stepsize: True
-      n_steps : 1000
+    n_steps : 1000
     every : 200
     color : "tab:green"
 
@@ -50,6 +50,37 @@ methods:
       corr_coef: 0.9
       bernoulli_prob_corr: 0.5
       mala_steps: 1
-      n_steps : 1000
+    n_steps : 1000
     every : 200
     color : "tab:red"
+
+  # "Ex$^2$MCMC w/o corr":
+  #   mcmc_class: Ex2MCMC
+  #   params:
+  #     N: 10
+  #     grad_step: 0.01
+  #     adapt_stepsize: True
+  #     # corr_coef: 0.9
+  #     # bernoulli_prob_corr: 0.5
+  #     mala_steps: 1
+  #   n_steps : 1000
+  #   every : 200
+  #   color : "tab:purple"
+
+  # FlEx$^2$MCMC:
+  #   mcmc_class: Ex2MCMC
+  #   params:
+  #     N: 10
+  #     grad_step: 0.01
+  #     adapt_stepsize: True
+  #     corr_coef: 0.9
+  #     bernoulli_prob_corr: 0.5
+  #     mala_steps: 1
+  #   n_steps: 1000
+  #   every: 200
+  #   flow:
+  #     num_flows: 4
+  #     lr: 0.01
+  #     batch_size: 100
+  #     n_steps: 200
+  #   color: "tab:pink"

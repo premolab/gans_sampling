@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from utils import DotConfig
 
-from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC
+from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC, FlowMCMC
 from iterative_sir.sampling_utils.distributions import (
     IndependentNormal,
 )
@@ -27,6 +27,7 @@ from iterative_sir.toy_examples_utils.gan_fc_models import (
     Generator_fc, 
     Discriminator_fc,
 )
+from iterative_sir.sampling_utils.flows import RNVP
 
 
 sns.set_theme(style="ticks", palette="deep")
@@ -102,8 +103,47 @@ def main(config, model_config, run=True):
             mcmc_class = eval(mcmc_class)
             mcmc = mcmc_class(**info.params.dict, dim=dim)
 
+            if "flow" in info.dict.keys():
+                    verbose = mcmc.verbose
+                    mcmc.verbose = False
+                    flow = RNVP(info.flow.num_flows, dim=dim)
+
+                    flow_mcmc = FlowMCMC(
+                        target,
+                        proposal,
+                        flow,
+                        mcmc,
+                        batch_size=info.flow.batch_size,
+                        lr=info.flow.lr,
+                    )
+                    flow.train()
+                    out_samples, nll = flow_mcmc.train(
+                        n_steps=info.flow.n_steps,
+                    )
+                    assert not torch.isnan(
+                        next(flow.parameters())[0, 0],
+                    ).item()
+
+                    flow.eval()
+                    mcmc.flow = flow
+                    mcmc.verbose = verbose
+
+                    # if "figpath" in config.dict:
+                    #     fig = plot_learned_density(
+                    #         flow,
+                    #         proposal,
+                    #         xlim=target.xlim,
+                    #         ylim=target.ylim,
+                    #     )
+                    #     plt.savefig(
+                    #         Path(
+                    #             config.figpath,
+                    #             f"flow_{config.dist}_{dim}.pdf",
+                    #         ),
+                    #     )
+
             z_0 = proposal.sample((config.batch_size,))
-            out = mcmc(z_0, target, proposal, info.params.n_steps)
+            out = mcmc(z_0, target, proposal, info.n_steps)
 
             if isinstance(out, tuple):
                 sample = out[0]
@@ -169,7 +209,7 @@ def main(config, model_config, run=True):
         plt.rc("axes", labelsize=MEDIUM_SIZE)  # fontsize of the x and y labels
         plt.rc("xtick", labelsize=SMALL_SIZE)  # fontsize of the tick labels
         plt.rc("ytick", labelsize=SMALL_SIZE)  # fontsize of the tick labels
-        plt.rc("legend", fontsize=SMALL_SIZE)  # legend fontsize
+        plt.rc("legend", fontsize=MEDIUM_SIZE)  # legend fontsize
         plt.rc("figure", titlesize=BIGGER_SIZE)  # fontsize of the figure title
         # plt.rc("lines", lw=3)  # fontsize of the figure title
         # plt.rc("lines", markersize=7)  # fontsize of the figure title

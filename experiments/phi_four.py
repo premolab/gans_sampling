@@ -255,10 +255,11 @@ def main(config, run=True):
 
             # prop = proposal.sample((10,))
             prop = torch.zeros(1, dim)
-            x_gen = mcmc(prop, target, proposal, flow=flow, n_steps=21)
+            x_gen = mcmc(prop, target, proposal, mala_steps=1, flow=flow, n_steps=21)
             # x_gen = mcmc(prop, target, proposal, flow=None, n_steps=100)
             if isinstance(x_gen, Tuple):
                 x_gen = x_gen[0]
+            #x_gen = x_gen[-10:]
             # mixing_samples.append(x_gen[-1])
             mixing_samples.append(torch.stack(x_gen[1:], 0).reshape(-1, dim))
 
