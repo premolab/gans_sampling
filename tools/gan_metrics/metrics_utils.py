@@ -374,7 +374,87 @@ def calculate_images_statistics(z_agg_step, G,
     return dict_results
 
 
+def load_dict_stats(method_name, path_to_save):
+    names_list = ["inception_scores_mean", "inception_scores_std",
+                  "fid_scores_mean_train", "fid_scores_mean_test",
+                  "fid_scores_std_train", "fid_scores_std_test",
+                  "msid_scores_mean_train", "msid_scores_mean_test",
+                  "msid_scores_std_train", "msid_scores_std_test"
+                  ]
+
+    dict_results = {}
+    for i in range(len(names_list)):
+        cur_score_path = os.path.join(path_to_save,
+                                      f"{method_name}_{names_list[i]}.npy")
+        arrays_list = np.load(cur_score_path)
+        dict_results[names_list[i]] = arrays_list
+
+    return dict_results
+
+
 def plot_scores_dynamics(scores,
+                         every_step,
+                         method_name,
+                         path_to_save,
+                         start_plot=None,
+                         fig_plot=None,
+                         figsize=(12, 8),
+                         stds_coef=[2.0, 2.0, 2.0, 1.0],
+                         plot_is_fid_msid=[True, True, True, False],
+                         file_names=None,
+                         color_conf="C0",
+                         color_mean="orange"):
+    xlabels = ["IS", "FID", "FID", "MSID"]
+    mean_names = ["inception_scores_mean", "fid_scores_mean_train",
+                  "fid_scores_mean_test", "msid_scores_mean_test"]
+    std_names = ["inception_scores_std", "fid_scores_std_train",
+                 "fid_scores_std_test", "msid_scores_std_test"]
+    titles = ["Inception score", "Frechet Inception distance",
+              "Frechet Inception distance", "MSID score"]
+    train_test_mode = ["", "on train", "on test", "on test"]
+
+    if start_plot is None:
+        num_plots = sum(plot_is_fid_msid)
+        fig, axs = plt.subplots(nrows=num_plots, figsize=(figsize[0], num_plots * figsize[1]))
+
+    else:
+        axs = start_plot
+        fig = fig_plot
+
+    ind_plot = 0
+    cur_file_names = []
+    for i in range(4):
+        if plot_is_fid_msid[i]:
+            range_steps = [i * every_step for i in range(len(scores[mean_names[i]]))]
+            axs[ind_plot].plot(range_steps, scores[mean_names[i]], c=color_mean,
+                               label=f'mean {xlabels[i]} for {method_name} {train_test_mode[i]}')
+            axs[ind_plot].fill_between(range_steps,
+                                       scores[mean_names[i]] - stds_coef[i] * scores[std_names[i]],
+                                       scores[mean_names[i]] + stds_coef[i] * scores[std_names[i]],
+                                       color=color_conf,
+                                       alpha=0.2,
+                                       label=fr'Intervals for mean {xlabels[i]} {method_name}: mean $\pm \; {stds_coef[i]} \cdot$ std')
+            if start_plot is None:
+                axs[ind_plot].set_xlabel("number of steps")
+                axs[ind_plot].set_ylabel(xlabels[i])
+                axs[ind_plot].set_title(f"{titles[i]} dynamics for {method_name}")
+                axs[ind_plot].grid(True)
+                name_mean = f'{method_name}_{mean_names[i]}.pdf'
+            else:
+                title = axs[ind_plot].get_title()
+                title += f", {method_name}"
+                axs[ind_plot].set_title(title)
+                name_mean = f"{method_name}_" + file_names[ind_plot]
+            axs[ind_plot].legend()
+            cur_file_names.append(name_mean)
+            name_mean_path = os.path.join(path_to_save, name_mean)
+            fig.savefig(name_mean_path)
+            ind_plot += 1
+
+    return axs, fig, cur_file_names
+
+
+def plot_old_scores_dynamics(scores,
                          every_step, method_name,
                          figsize,
                          path_to_save,
