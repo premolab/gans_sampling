@@ -110,7 +110,8 @@ def calculate_images_statistics(z_agg_step, G,
                                 dataset="cifar10",
                                 calculate_is=True,
                                 calculate_msid_train=False,
-                                calculate_msid_test=False):
+                                calculate_msid_test=False,
+                                **kwargs):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     random.seed(random_seed)
@@ -150,6 +151,32 @@ def calculate_images_statistics(z_agg_step, G,
                                        transforms.ToTensor(),
                                        transforms.Normalize((0.5,), (0.5,)),
                                    ]))
+    elif dataset == "celeba":
+        image_size = kwargs["image_size"]
+        dataroot = kwargs["dataroot"]
+        if image_size is not None:
+            train_dataset = dset.ImageFolder(root=dataroot,
+                                             transform=transforms.Compose([
+                                                 transforms.Resize(image_size),
+                                                 transforms.CenterCrop(image_size),
+                                                 transforms.ToTensor(),
+                                                 transforms.Normalize((0.5, 0.5, 0.5),
+                                                                      (0.5, 0.5, 0.5)),
+                                             ]))
+            transformer = transforms.Compose([transforms.Resize(image_size),
+                                              transforms.CenterCrop(image_size)])
+        else:
+            train_dataset = dset.ImageFolder(root=dataroot,
+                                             transform=transforms.Compose([
+                                                 transforms.ToTensor(),
+                                                 transforms.Normalize((0.5, 0.5, 0.5),
+                                                                      (0.5, 0.5, 0.5)),
+                                             ]))
+            transformer = None
+        train_dataloader = torch.utils.data.DataLoader(train_dataset,
+                                                       batch_size=batch_size,
+                                                       shuffle=True,
+                                                       num_workers=4)
     else:
         raise ValueError("We support now only CIFAR10 and MNIST datasets")
 

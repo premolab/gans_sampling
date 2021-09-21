@@ -15,7 +15,7 @@ sys.path.append(api_path_sampling)
 sys.path.append(api_path_gan_metrics)
 
 from metrics import inception_score
-from fid_score import calculate_fid_given_paths
+from fid_msid_scores import calculate_stat_given_paths
 from general_utils import to_var, to_np
 
 
@@ -228,11 +228,12 @@ def calculate_celeba_statistics(z_agg_step, G,
                                        use_clamp
                                        )
         paths_to_train_method = [name_real_train, name_fake_train]
-        results_fid_train = calculate_fid_given_paths(paths_to_train_method,
-                                                      batch_size_resnet,
-                                                      cuda,
-                                                      dim_resnet,
-                                                      model_type=model_type)
+        results_fid_train = calculate_stat_given_paths(paths_to_train_method,
+                                                       batch_size_resnet,
+                                                       cuda,
+                                                       dim_resnet,
+                                                       model_type=model_type,
+                                                       metric='fid')
         results_fid_train = results_fid_train[0]
 
         mean_fid_train = results_fid_train[1]
