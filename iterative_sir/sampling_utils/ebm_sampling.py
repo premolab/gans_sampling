@@ -15,7 +15,10 @@ def grad_energy(point, target, x=None):
         energy = -target(z=point, x=x)
     else:
         energy = -target(point)
+
     grad = torch.autograd.grad(energy.sum(), point)[0]
+    # very strangely last vector in batch produces wrong gradient !
+    # grad = torch.clamp(grad, -1e3, 1e3)
     return energy, grad
 
 
@@ -40,9 +43,14 @@ def gan_energy(
             torch.log(sigmoid_gan_part) - torch.log1p(-sigmoid_gan_part)
         ).view(-1)
 
-    proposal_part = -proposal.log_prob(z)
+    # very strangely last vector in batch produces wrong gradient !
+    try:
+        proposal_part = -proposal.log_prob(z)
+    except Exception:
+        proposal_part = 0  # print(gan_part, z)
 
     energy = gan_part + proposal_part
+
     if not log_prob:
         return energy
     else:
@@ -183,11 +191,15 @@ def aggregate_sampling_output(z):
     )
 
 
-def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
+def langevin_dynamics(
+    z, target, proposal, n_steps, grad_step, eps_scale, verbose=False
+):
     z_sp = []
     batch_size, _ = z.shape[0], z.shape[1]
 
-    for _ in range(n_steps):
+    range_gen = trange if verbose else range
+
+    for _ in range_gen(n_steps):
         z_sp.append(z)
         eps = eps_scale * proposal.sample([batch_size])
 
@@ -211,6 +223,7 @@ class ULA(AbstractMCMC):
             "noise_scale",
             (2 * self.grad_step) ** 0.5,
         )
+        self.verbose = kwargs.get("verbose", True)
 
     def __call__(
         self,
@@ -220,18 +233,15 @@ class ULA(AbstractMCMC):
         n_steps,
         grad_step=None,
         noise_scale=None,
+        verbose=None,
     ):
         grad_step = grad_step if grad_step is not None else self.grad_step
         noise_scale = (
             noise_scale if noise_scale is not None else self.noise_scale
         )
+        verbose = verbose if verbose is None else self.verbose
         return langevin_dynamics(
-            z,
-            target,
-            proposal,
-            n_steps,
-            grad_step,
-            noise_scale,
+            z, target, proposal, n_steps, grad_step, noise_scale, verbose
         )
 
 
@@ -394,6 +404,8 @@ class MALA(AbstractMCMC):
             )
             zs.append(z.detach().clone())
             acceptance += mask.float() / n_steps
+        if adapt_stepsize:
+            self.grad_step = self.mala_transition.adapt_grad_step
 
         return zs, acceptance
 

@@ -14,9 +14,9 @@ from iterative_sir.sampling_utils.visualization import epoch_visualization
 from .toy_examples_utils import prepare_train_batches
 
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
+# torch.manual_seed(42)
+# np.random.seed(42)
+# random.seed(42)
 device_default = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

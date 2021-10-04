@@ -339,7 +339,7 @@ class Funnel(Distribution):
         # self.distr2 = lambda z1: -(z[...,1:]**2).sum(-1) * (-2*self.b*z1).exp() - np.log(self.dim) + 2*self.b*z1
         self.xlim = [-2, 10]
         self.ylim = [-30, 30]
-        self.scale_2d_log_prob = 10.0
+        self.scale_2d_log_prob = 30.0  # 10.0
 
     def log_prob(self, z, x=None):
         # pdb.set_trace()
@@ -372,18 +372,30 @@ class Funnel(Distribution):
         if fig is None and ax is None:
             fig, ax = plt.subplots()
 
-        xlim = [-2, 10]
-        ylim = [-30, 30]
+        xlim = [-2, 13]
+        ylim = [-60, 60]
 
-        # x = np.linspace(*xlim, 100)
-        # y = np.linspace(*ylim, 100)
-        # xx, yy = np.meshgrid(x, y)
-        # z = torch.FloatTensor(np.stack([xx, yy], -1))
-        # vals = (self.log_prob_2d_slice(z) / self.scale_2d_log_prob).exp()
-        # if ax is not None:
-        #     ax.imshow(vals.flip(0), extent=[*xlim, *ylim], cmap='Greens', alpha=0.5, aspect='auto')
-        # else:
-        #     plt.imshow(vals.flip(0), extent=[*xlim, *ylim], cmap='Greens', alpha=0.5, aspect='auto')
+        x = np.linspace(*xlim, 100)
+        y = np.linspace(*ylim, 100)
+        xx, yy = np.meshgrid(x, y)
+        z = torch.FloatTensor(np.stack([xx, yy], -1))
+        vals = (self.log_prob_2d_slice(z) / self.scale_2d_log_prob).exp()
+        if ax is not None:
+            ax.imshow(
+                vals.flip(0),
+                extent=[*xlim, *ylim],
+                cmap="Greens",
+                alpha=0.5,
+                aspect="auto",
+            )
+        else:
+            plt.imshow(
+                vals.flip(0),
+                extent=[*xlim, *ylim],
+                cmap="Greens",
+                alpha=0.5,
+                aspect="auto",
+            )
 
         return fig, xlim, ylim
 

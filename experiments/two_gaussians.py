@@ -13,7 +13,7 @@ from easydict import EasyDict as edict
 from matplotlib import pyplot as plt
 from utils import DotConfig, random_seed
 
-from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC
+from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC, FlowMCMC
 from iterative_sir.sampling_utils.distributions import (
     Distribution,
     GaussianMixture,
@@ -22,6 +22,7 @@ from iterative_sir.sampling_utils.distributions import (
     init_independent_normal_scale,
 )
 from iterative_sir.sampling_utils.ebm_sampling import MALA
+from iterative_sir.sampling_utils.flows import RNVP
 from iterative_sir.sampling_utils.metrics import ESS, Evolution, acl_spectrum
 
 
@@ -162,7 +163,9 @@ def compute_metrics(sample, target, trunc_chain_len=None):
     return result
 
 
-def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
+def plot_metrics(
+    dims, found_both, ess, ess_per_sec, hqr, colors=None, savedir=None
+):
     SMALL_SIZE = 18  # 8
     MEDIUM_SIZE = 20  # 10
     BIGGER_SIZE = 20  # 12
@@ -175,7 +178,13 @@ def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
     plt.rc("legend", fontsize=SMALL_SIZE)  # legend fontsize
     plt.rc("figure", titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
-    fig, axs = plt.subplots(ncols=4, figsize=(20, 5))
+    fig, axs = plt.subplots(ncols=4, figsize=(20, 4))
+    figs = []
+    axs = []
+    for _ in range(4):
+        fig, ax = plt.subplots(ncols=1, figsize=(5, 4))
+        figs.append(fig)
+        axs.append(ax)
 
     for i, (method_name, arr) in enumerate(found_both.items()):
         if colors is not None:
@@ -186,7 +195,7 @@ def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
     axs[0].set_xlabel("dim")
     axs[0].set_ylabel("captured 2 modes")
     axs[0].grid()
-    axs[0].legend()
+    # axs[0].legend()
 
     for i, (method_name, arr) in enumerate(ess.items()):
         if colors is not None:
@@ -197,7 +206,7 @@ def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
     axs[1].set_xlabel("dim")
     axs[1].set_ylabel("ESS")
     axs[1].grid()
-    axs[1].legend()
+    # axs[1].legend()
 
     for i, (method_name, arr) in enumerate(ess_per_sec.items()):
         if colors is not None:
@@ -206,9 +215,9 @@ def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
         else:
             axs[2].plot(dims, arr, label=method_name, marker="o")
     axs[2].set_xlabel("dim")
-    axs[2].set_ylabel("ESS per sec")
+    axs[2].set_ylabel("ESS/s")
     axs[2].grid()
-    axs[2].legend()
+    # axs[2].legend()
 
     for i, (method_name, arr) in enumerate(hqr.items()):
         if colors is not None:
@@ -221,8 +230,14 @@ def plot_metrics(dims, found_both, ess, ess_per_sec, hqr, colors=None):
     axs[3].grid()
     axs[3].legend()
 
-    fig.tight_layout()
-    return fig
+    for ax, fig, name in zip(
+        axs, figs, ["captured", "ESS", "ESS_per_sec", "HQR"]
+    ):
+        fig.tight_layout()
+        fig.savefig(Path(savedir, f"2_gauss_{name}.pdf"))
+
+
+# return fig
 
 
 def parse_arguments():
@@ -279,8 +294,33 @@ def main(config, run=True):
 
             start = proposal.sample([args.batch_size])
 
+            if "flow" in info.dict.keys():
+                verbose = mcmc.verbose
+                mcmc.verbose = False
+                flow = RNVP(info.flow.num_flows, dim=dim)
+
+                flow_mcmc = FlowMCMC(
+                    target,
+                    proposal,
+                    flow,
+                    mcmc,
+                    batch_size=info.flow.batch_size,
+                    lr=info.flow.lr,
+                )
+                flow.train()
+                out_samples, nll = flow_mcmc.train(
+                    n_steps=info.flow.n_steps,
+                )
+                assert not torch.isnan(
+                    next(flow.parameters())[0, 0],
+                ).item()
+
+                flow.eval()
+                mcmc.flow = flow
+                mcmc.verbose = verbose
+
             s = time.time()
-            out = mcmc(start, target, proposal, n_steps=info.params.n_steps)
+            out = mcmc(start, target, proposal, n_steps=info.n_steps)
             e = time.time()
             elapsed = e - s  # / 60
             if isinstance(out, tuple):
@@ -306,10 +346,16 @@ def main(config, run=True):
             hqr_dict[method_name].append(result["hqr"])
 
     if "figpath" in config.dict:
-        fig = plot_metrics(
-            args.dim, found_both, ess, ess_per_sec, hqr_dict, colors=colors
+        plot_metrics(
+            args.dim,
+            found_both,
+            ess,
+            ess_per_sec,
+            hqr_dict,
+            colors=colors,
+            savedir=Path(config.figpath),
         )
-        plt.savefig(Path(config.figpath, "2_gaussians.pdf"))
+        # plt.savefig(Path(config.figpath, "2_gaussians.pdf"))
 
 
 if __name__ == "__main__":

@@ -791,13 +791,15 @@ def plot_chain_metrics(
     savepath=None,
     sigma=0.05,
     std=True,
-    keys=["mode_std", "hqr", "jsd", "n_found_modes", "emd"]
+    keys=["mode_std", "hqr", "jsd", "n_found_modes", "emd"],
 ):
     instance = list(evols.values())[0]
-    #keys = ["mode_std", "hqr", "jsd", "n_found_modes", "emd"]
+    # keys = ["mode_std", "hqr", "jsd", "n_found_modes", "emd"]
     ncols = int(np.sum([int(len(instance[k]) > 0) for k in keys]))
 
-    fig, axs = plt.subplots(ncols=ncols, nrows=1, figsize=(6 * ncols, 6), squeeze=False)
+    fig, axs = plt.subplots(
+        ncols=ncols, nrows=1, figsize=(6 * ncols, 6), squeeze=False
+    )
     axs = axs[0]
 
     # fig, axs = plt.subplots(ncols=3, nrows=2, figsize=(6*3, 12))#ncols, nrows=1, figsize=(6*ncols, 6))
@@ -847,9 +849,13 @@ def plot_chain_metrics(
     # emd_ax.set_ylabel('EMD')
     # emd_ax.set_title('Earth Mover\'s Distance')
 
-    for i, (label, evol) in enumerate(evols.items()):
+    for i, label in enumerate(evols.keys()):
+        evol = evols[label]
+        # color = evol['color']
         if colors is not None:
             color = colors[i]
+            # color = evol['color'] #colors[i]
+            # print()
         else:
             color = sns.color_palette()[i]
         k = 0
@@ -869,6 +875,7 @@ def plot_chain_metrics(
                     mean_arr - 1.96 * std_arr,
                     mean_arr + 1.96 * std_arr,
                     alpha=0.2,
+                    color=color,
                 )
             else:
                 mean_arr = ev

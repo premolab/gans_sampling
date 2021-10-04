@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
+import ot
 import seaborn as sns
 import torch
 import yaml
@@ -13,12 +14,13 @@ from matplotlib import pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from utils import DotConfig
 
-from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC
+from iterative_sir.sampling_utils.adaptive_mc import CISIR, Ex2MCMC, FlowMCMC
 from iterative_sir.sampling_utils.distributions import (
     GaussianMixture,
     IndependentNormal,
 )
 from iterative_sir.sampling_utils.ebm_sampling import MALA, ULA
+from iterative_sir.sampling_utils.flows import RNVP
 from iterative_sir.sampling_utils.metrics import Evolution
 from iterative_sir.sampling_utils.visualization import plot_chain_metrics
 from iterative_sir.toy_examples_utils import prepare_25gaussian_data
@@ -38,6 +40,8 @@ def parse_arguments():
 
 def main(config, run=True):
     colors = []
+    names = []
+    samples = []
 
     if run:
         device = config.device
@@ -47,8 +51,8 @@ def main(config, run=True):
             config.random_seed,
         )
 
-        scaler = StandardScaler()
-        X_train_std = scaler.fit_transform(X_train)
+        scaler = None  # StandardScaler()
+        # X_train_std = scaler.fit_transform(X_train)
 
         dim = 2
         num_gauss = 25
@@ -77,7 +81,7 @@ def main(config, run=True):
             (config.sigma ** 2) * torch.eye(dim).to(device),
         ] * target_args.num_gauss
         target_args.dim = dim
-        true_target = GaussianMixture(device=device, **target_args)
+        target = GaussianMixture(device=device, **target_args)
 
         loc_proposal = torch.zeros(dim).to(device)
         scale_proposal = torch.ones(dim).to(device)
@@ -92,42 +96,70 @@ def main(config, run=True):
 
         batch_size = config.batch_size
 
-        target_sample = X_train[
-            np.random.choice(np.arange(X_train.shape[0]), 1000)
-        ]
+        target_sample = X_train
 
         for method_name, info in config.methods.items():
             print(f"========= {method_name} ========== ")
+            names.append(method_name)
             colors.append(info.color)
             mcmc_class = info.mcmc_class
             mcmc_class = eval(mcmc_class)
             mcmc = mcmc_class(**info.params.dict, dim=dim)
 
             z_0 = proposal.sample((config.batch_size,))
-            out = mcmc(z_0, true_target, proposal, info.params.n_steps)
+
+            if "flow" in info.dict.keys():
+                verbose = mcmc.verbose
+                mcmc.verbose = False
+                flow = RNVP(info.flow.num_flows, dim=dim)
+
+                flow_mcmc = FlowMCMC(
+                    target,
+                    proposal,
+                    flow,
+                    mcmc,
+                    batch_size=info.flow.batch_size,
+                    lr=info.flow.lr,
+                )
+                flow.train()
+                out_samples, nll = flow_mcmc.train(
+                    n_steps=info.flow.n_steps,
+                )
+                assert not torch.isnan(
+                    next(flow.parameters())[0, 0],
+                ).item()
+
+                flow.eval()
+                mcmc.flow = flow
+                mcmc.verbose = verbose
+
+            out = mcmc(z_0, target, proposal, info.burn_in)
+            if isinstance(out, tuple):
+                out = out[0]
+
+            out = mcmc(out[-1], target, proposal, info.n_steps)
 
             if isinstance(out, tuple):
                 sample = out[0]
+                acc = out[1]
+                print(acc)
             else:
                 sample = out
 
             sample = torch.stack(sample, 0).detach().numpy()
             sample = sample[-config.n_chunks * info.every :].reshape(
-                (config.n_chunks, batch_size, -1, sample.shape[-1]),
+                config.n_chunks, info.every, batch_size, sample.shape[-1]
             )
-            Xs_gen = sample.reshape(
-                batch_size,
-                config.n_chunks,
-                -1,
-                sample.shape[-1],
-            )
+            Xs_gen = sample.transpose(2, 0, 1, 3)
+
+            samples.append(Xs_gen[0].reshape(-1, dim))
 
             evol = defaultdict(list)
             for X_gen in Xs_gen:
                 evolution = Evolution(
                     target_sample,
                     locs=locs,
-                    target_log_prob=true_target,
+                    target_log_prob=target,
                     sigma=config.sigma,
                     scaler=scaler,
                 )
@@ -144,17 +176,22 @@ def main(config, run=True):
                 )
             evols[method_name] = evol
 
+            M = ot.dist(Xs_gen.reshape(-1, dim), X_train)
+            emd = ot.emd2([], [], M)
+            print(emd)
+
         if "respath" in config.dict:
             pickle.dump(
                 evols,
                 Path(config.respath, "gaussians_2d_metrics.pkl").open("wb"),
             )
-
     else:
         evols = pickle.load(Path(config.respath).open("rb"))
         evols = {k: evols[k] for k in config.methods.dict.keys()}
         for method_name, info in config.methods.items():
             colors.append(info.color)
+
+    print(evols)
 
     if "figpath" in config.dict:
         # SMALL_SIZE = 15  # 8
@@ -189,6 +226,33 @@ def main(config, run=True):
             every=info.every,
             savepath=Path(config.figpath, "gaussians_2d.pdf"),
         )
+
+        for name, sample in zip(names, samples):
+            # print('hi')
+            # color = evols['color']
+            fig = plt.figure(figsize=(6, 6))
+            ax = fig.add_subplot(111)
+            ax.scatter(
+                X_train[:1000, 0],
+                X_train[:1000, 1],
+                alpha=0.3,
+                s=100,
+                color="grey",
+            )
+            ax.scatter(
+                sample[-500:, 0],
+                sample[-500:, 1],
+                alpha=0.3,
+                s=100,
+                color="red",
+            )
+            ax.grid(True)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            # plt.legend()
+            fig.tight_layout()
+            plt.savefig(Path(config.figpath, f"gan_gaussians_2d_{name}.pdf"))
+            plt.close()
 
 
 if __name__ == "__main__":

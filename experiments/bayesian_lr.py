@@ -178,6 +178,7 @@ def main(dataset, config, run=True):
                     mcmc,
                     batch_size=info.flow.batch_size,
                     lr=info.flow.lr,
+                    jump_tol=1e6,
                 )
                 flow.train()
                 out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
@@ -223,6 +224,10 @@ def main(dataset, config, run=True):
 
         sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
 
+        mean_post = {
+            k: v for (k, _), v in zip(config.methods.items(), mean_post)
+        }
+
         if "respath" in config.dict:
             resdir = Path(config.respath, config.dataset)
             resdir.mkdir(parents=True, exist_ok=True)
@@ -230,14 +235,21 @@ def main(dataset, config, run=True):
             np.save(respath.open("wb"), mean_post)
 
     else:
-        mean_post = np.load(Path(config.respath).open("rb")).T
+        mean_post = np.load(Path(config.respath).open("rb"))
         colors = []
         for method_name, info in config.methods.items():
             colors.append(info.color)
             metrics.stor.method.append(method_name)
+        # print(mean_post)
+        mean_post = {
+            method_name: mean_post[method_name]
+            for method_name, _ in config.methods.items()
+        }
 
     if "figpath" in config.dict:
-        fig = plot(mean_post, metrics.stor.method, colors)
+        fig = plot(
+            list(mean_post.values()), list(mean_post.keys()), colors
+        )  # metrics.stor.method, colors)
         plt.savefig(Path(config.figpath, f"bayesian_lr_{config.dataset}.pdf"))
 
 

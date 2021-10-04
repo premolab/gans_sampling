@@ -111,13 +111,12 @@ def main(config, run=True):
 
             # scale = 1
             # scale = target.scale.sum().item() ** .5
-            acl = (
-                acl_spectrum(trunc_sample, n=trunc_sample.shape[0])
-                .mean(-1)
-                .mean(-1)
-            )  # - trunc_sample.mean(0)[None, ...])
+            acl = acl_spectrum(trunc_sample, n=trunc_sample.shape[0]).mean(-1)
+            acl_mean = acl.mean(axis=-1)
+            acl_std = acl.std(axis=-1, ddof=1)
+            # - trunc_sample.mean(0)[None, ...])
 
-            acl_times.append(acl[:-1])
+            acl_times.append((acl_mean[:-1], acl_std[:-1]))
 
             print(
                 f"Method: {method_name}, ESS: {ess.mean():.4f}, sampling time: {elapsed:.2f}, ESS/s: {ess.mean()*info.n_steps/elapsed:.2f}",
@@ -145,13 +144,22 @@ def main(config, run=True):
 
             fig = plt.figure(figsize=(7, 6))
             for name, acl, color in zip(names, acl_times, colors):
+                acl_mean, acl_std = acl
                 plt.plot(
-                    np.arange(len(acl)),
-                    acl,
+                    np.arange(len(acl_mean)),
+                    acl_mean,
                     label=fr"{name}",
                     color=color,
                     linewidth=3,
                 )
+                plt.fill_between(
+                    np.arange(len(acl_mean)),
+                    acl_mean - 1.96 * acl_std,
+                    acl_mean + 1.96 * acl_std,
+                    color=color,
+                    alpha=0.3,
+                )
+                plt.ylim(0, 1)
 
             plt.xlabel("Sampling iterations")
             plt.ylabel("Autocorrelation")

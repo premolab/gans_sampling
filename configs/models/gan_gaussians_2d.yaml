@@ -1,16 +1,16 @@
 generator:
     model_class: Generator_fc
     params:
-      n_layers: 4
+      n_layers: 3
       n_dim: 2
       n_out: 2
-      n_hid: 100
-    weight_path: models/models_25gaussians/jensen_minimax/2020_12_30-01_38_15_generator.pth
+      n_hid: 128
+    weight_path: models/models_25gaussians/wasserstein/2021_01_17-01_38_21_generator.pth
 
 discriminator:
     model_class: Discriminator_fc
     params:
-      n_layers: 4
-      n_hid: 100
+      n_layers: 3
+      n_hid: 256
       n_in: 2
-    weight_path: models/models_25gaussians/jensen_minimax/2020_12_30-01_38_15_discriminator.pth
+    weight_path: models/models_25gaussians/wasserstein/2021_01_17-01_38_21_discriminator.pth

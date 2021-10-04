@@ -48,8 +48,17 @@ plt.rc(
 )  # fontsize of the figure title
 
 
-def plot_metrics(method_metric_dict, colors, dim_arr, scale=1.0):
-    fig, axs = plt.subplots(ncols=3, nrows=1, figsize=(20, 4))
+def plot_metrics(
+    method_metric_dict, colors, dim_arr, scale=1.0, save_dir=None
+):
+    figs = []
+    axs = []
+    for _ in range(3):
+        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(6, 4))
+        figs.append(fig)
+        axs.append(ax)
+
+    # fig, axs = plt.subplots(ncols=3, nrows=1, figsize=(20, 4))
     # for (name, metric_dict), color in zip(method_metric_dict.items(), colors):
 
     axs[0].axhline(
@@ -85,12 +94,14 @@ def plot_metrics(method_metric_dict, colors, dim_arr, scale=1.0):
                 color=color,
                 alpha=0.3,
             )
-
-    for ax in axs:
+    axs[-1].legend()
+    for fig, ax, name in zip(figs, axs, ["mean", "var", "ess"]):
         ax.grid()
-        ax.legend()
 
-    fig.tight_layout()
+        fig.tight_layout()
+
+        if save_dir:
+            fig.savefig(Path(save_dir, f"one_gauss_{name}.pdf"))
 
 
 def parse_arguments():
@@ -188,11 +199,16 @@ def main(config, run=True):
         for method_name, info in config.methods.items():
             colors.append(info.color)
 
-    plot_metrics(
-        method_metric_dict, colors, dim_arr, scale=config.scale_target
-    )
     if "figpath" in config.dict:
-        plt.savefig(Path(config.figpath, "one_gaussian.pdf"))
+        plot_metrics(
+            method_metric_dict,
+            colors,
+            dim_arr,
+            scale=config.scale_target,
+            save_dir=config.figpath,
+        )
+    # if "figpath" in config.dict:
+    #     plt.savefig(Path(config.figpath, "one_gaussian.pdf"))
 
 
 if __name__ == "__main__":

@@ -25,6 +25,10 @@ To Do
 To complete while we advance to NeurIPS !! :)
 
 * to do fair ESS [x]
+
+* Registry
+
+* Image inpainting (?)
 # Ex$^2$MCMC: Sampling through Exploration Exploitation
 
 ## Table of content

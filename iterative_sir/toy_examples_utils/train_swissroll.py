@@ -66,9 +66,9 @@ plot_mhgan = params_module.plot_mhgan
 device = params_module.device
 
 
-torch.manual_seed(random_seed)
-np.random.seed(random_seed)
-random.seed(random_seed)
+# torch.manual_seed(random_seed)
+# np.random.seed(random_seed)
+# random.seed(random_seed)
 
 X_train = prepare_swissroll_data(train_dataset_size)
 X_train_std = X_train

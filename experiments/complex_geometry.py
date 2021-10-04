@@ -180,7 +180,13 @@ def sample_nuts(target, proposal, num_samples=1000):
 def plot_metrics(metrics, ndims, savepath=None, scale=1.0, colors=None):
     axs_names = ["Sliced TV", "ESS", "Euclidean EMD"]  # (on scaled data)']
     ncols = len(axs_names)
-    fig, axs = plt.subplots(ncols=ncols, figsize=(5 * ncols + ncols, 4))
+
+    figs = []
+    axs = []
+    for _ in range(ncols):
+        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(6, 4))
+        figs.append(fig)
+        axs.append(ax)
 
     for (name, res), color in zip(metrics.items(), colors):
         for k, v in res.items():
@@ -203,16 +209,17 @@ def plot_metrics(metrics, ndims, savepath=None, scale=1.0, colors=None):
         axs[2].plot(ndims, arr, label=name, marker="o", color=color)
         axs[2].set_yscale("log")
 
-    for ax, name in zip(axs, axs_names):
+    for ax, fig, name in zip(axs, figs, axs_names):
         ax.grid()
         ax.set_title(name)
         ax.set_xlabel("dim")
-        ax.legend()
+        if name == "Euclidean EMD":
+            ax.legend()
 
-    fig.tight_layout()
+        fig.tight_layout()
 
-    if savepath is not None:
-        plt.savefig(savepath)
+        if savepath is not None:
+            fig.savefig(Path(savepath, f"{name}.pdf"))
 
 
 def parse_arguments():
@@ -312,6 +319,7 @@ def main(config, run=True):
                                 f"flow_{config.dist}_{dim}.pdf",
                             ),
                         )
+                        plt.close()
 
                 start = proposal.sample((1,))
 
@@ -344,6 +352,61 @@ def main(config, run=True):
                 sample = sample[-config.trunc_chain_len :]
                 samples.append(sample)
 
+                if "figpath" in config.dict:
+                    SMALL_SIZE = 18  # 8
+                    MEDIUM_SIZE = 20  # 10
+                    BIGGER_SIZE = 20  # 12
+
+                    plt.rc(
+                        "font", size=SMALL_SIZE
+                    )  # controls default text sizes
+                    plt.rc(
+                        "axes", titlesize=BIGGER_SIZE
+                    )  # fontsize of the axes title
+                    plt.rc(
+                        "axes",
+                        labelsize=MEDIUM_SIZE,
+                    )  # fontsize of the x and y labels
+                    plt.rc(
+                        "xtick",
+                        labelsize=SMALL_SIZE,
+                    )  # fontsize of the tick labels
+                    plt.rc(
+                        "ytick",
+                        labelsize=SMALL_SIZE,
+                    )  # fontsize of the tick labels
+                    plt.rc("legend", fontsize=MEDIUM_SIZE)  # legend fontsize
+                    plt.rc(
+                        "figure",
+                        titlesize=BIGGER_SIZE,
+                    )  # fontsize of the figure title
+
+                    for name, sample in zip(names, samples):
+                        # fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
+                        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+                        _, xlim, ylim = target.plot_2d(fig, ax)
+
+                        ax.scatter(
+                            sample[:, 0],
+                            sample[:, 1],
+                            alpha=0.3,
+                            s=2,
+                            color="black",
+                        )
+                        # plt.axis('equal')
+                        ax.set_xlim(*xlim)
+                        ax.set_ylim(*ylim)
+
+                        ax.set_box_aspect(1)
+
+                        plt.savefig(
+                            Path(
+                                config.figpath,
+                                fr"{config.dist}_{dim}_{name}_proj.pdf",
+                            )
+                        )
+                        plt.close()
+
         sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
 
         if "respath" in config.dict:
@@ -354,50 +417,6 @@ def main(config, run=True):
             pickle.dump(method_metric_dict, respath.open("wb"))
             # method_metric_dict = pickle.load(respath.open('rb'))
 
-        if "figpath" in config.dict:
-            SMALL_SIZE = 18  # 8
-            MEDIUM_SIZE = 20  # 10
-            BIGGER_SIZE = 20  # 12
-
-            plt.rc("font", size=SMALL_SIZE)  # controls default text sizes
-            plt.rc("axes", titlesize=BIGGER_SIZE)  # fontsize of the axes title
-            plt.rc(
-                "axes",
-                labelsize=MEDIUM_SIZE,
-            )  # fontsize of the x and y labels
-            plt.rc(
-                "xtick",
-                labelsize=SMALL_SIZE,
-            )  # fontsize of the tick labels
-            plt.rc(
-                "ytick",
-                labelsize=SMALL_SIZE,
-            )  # fontsize of the tick labels
-            plt.rc("legend", fontsize=MEDIUM_SIZE)  # legend fontsize
-            plt.rc(
-                "figure",
-                titlesize=BIGGER_SIZE,
-            )  # fontsize of the figure title
-
-            for name, sample in zip(names, samples):
-                # fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
-                fig, ax = plt.subplots(1, 1, figsize=(4, 4))
-                _, xlim, ylim = target.plot_2d(fig, ax)
-
-                ax.scatter(
-                    sample[:, 0],
-                    sample[:, 1],
-                    alpha=0.3,
-                    s=2,
-                    color="black",
-                )
-                # plt.axis('equal')
-                ax.set_xlim(*xlim)
-                ax.set_ylim(*ylim)
-
-                plt.savefig(
-                    Path(config.figpath, fr"{config.dist}_{name}_proj.pdf")
-                )
     else:
         method_metric_dict = pickle.load(Path(config.respath).open("rb"))
         colors = []
@@ -417,10 +436,11 @@ def main(config, run=True):
         plt.rc("legend", fontsize=MEDIUM_SIZE)  # legend fontsize
         plt.rc("figure", titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
+        Path(config.figpath, f"{config.dist}").mkdir(exist_ok=True)
         plot_metrics(
             method_metric_dict,
             config.dims,
-            savepath=Path(config.figpath, f"{config.dist}_metrics.pdf"),
+            savepath=Path(config.figpath, f"{config.dist}"),
             colors=colors,
         )
         # plt.savefig(Path(config.figpath, '{config.dist}_proj.png'))

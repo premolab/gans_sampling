@@ -261,17 +261,11 @@ class Evolution:
             np.random.choice(
                 np.arange(gen_sample.shape[0]),
                 target_sample.shape[0],
+                replace=target_sample.shape[0] > gen_sample.shape[0],
             )
         ]
-        M = (
-            np.linalg.norm(
-                target_sample[None, :, :] - gen_sample[:, None, :],
-                axis=-1,
-                ord=2,
-            )
-            ** 2
-        )
-        emd = ot.lp.emd2([], [], M)
+        M = ot.dist(target_sample, gen_sample)
+        emd = ot.emd2([], [], M)
 
         return emd
 

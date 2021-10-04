@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 
 
-torch.manual_seed(42)
-np.random.seed(42)
-random.seed(42)
+# torch.manual_seed(42)
+# np.random.seed(42)
+# random.seed(42)
 device_default = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

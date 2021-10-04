@@ -6,18 +6,18 @@ figpath: figs
 respath: dump/one_gaussian
 
 methods:
-  ISIR:
+  i-SIR:
     mcmc_class: CISIR
     n_steps: 15000
     params:
       N: 10
     color: "tab:blue"
 
-  CISIR:
+  Ex$^2$MCMC:
     mcmc_class: CISIR
     n_steps: 15000
     params:
       N: 10
       corr_coef: 0.95 #0.9
       bernoulli_prob_corr: 1.0 #0.9
-    color: "tab:orange"
+    color: "tab:red"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for dataset_config in digits pima swiss covertype breast eeg
+for dataset_config in  covertype eeg digits pima swiss breast
 do
     echo "Dataset ${dataset_config}"
     python experiments/bayesian_lr.py \

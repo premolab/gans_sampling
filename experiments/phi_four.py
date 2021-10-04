@@ -255,11 +255,13 @@ def main(config, run=True):
 
             # prop = proposal.sample((10,))
             prop = torch.zeros(1, dim)
-            x_gen = mcmc(prop, target, proposal, mala_steps=1, flow=flow, n_steps=21)
+            x_gen = mcmc(
+                prop, target, proposal, mala_steps=1, flow=flow, n_steps=21
+            )
             # x_gen = mcmc(prop, target, proposal, flow=None, n_steps=100)
             if isinstance(x_gen, Tuple):
                 x_gen = x_gen[0]
-            #x_gen = x_gen[-10:]
+            # x_gen = x_gen[-10:]
             # mixing_samples.append(x_gen[-1])
             mixing_samples.append(torch.stack(x_gen[1:], 0).reshape(-1, dim))
 
@@ -278,7 +280,7 @@ def main(config, run=True):
         names = config.methods.dict.keys()
         # fig, axs = plt.subplots(ncols=len(names), figsize=(6 * len(names), 5))
         for sample, name, short_name in zip(flow_samples, names, short_names):
-            fig = plt.figure(figsize=(6, 6))
+            fig = plt.figure(figsize=(7, 7))
             for i in range(sample.shape[0]):
                 plt.plot(
                     sample[i, :].detach().cpu(),
@@ -307,15 +309,25 @@ def main(config, run=True):
             plt.savefig(Path(config.figpath, "allen_cahn_nll.pdf"))
             plt.close()
 
-        fig = plt.figure(figsize=(7, 6))
+        fig = plt.figure(figsize=(6.3, 6))
         for name, acl, color in zip(names, acl_times, colors):
-            plt.plot(np.arange(len(acl)), acl, label=fr"{name}", color=color)
+            plt.plot(
+                np.arange(len(acl)),
+                acl,
+                label=fr"{name}",
+                color=color,
+                linewidth=5,
+            )
 
-        plt.xlabel("Burn-in and training iterations")
+        # plt.box_asp
+        plt.xlabel("Burn-in and training iterations")  # , loc='left')
+        axes = plt.gca()
+        axes.xaxis.set_label_coords(1.1, -2)
+        axes.set_box_aspect(1.0)
         plt.ylabel("Autocorrelation")
         plt.xscale("log")
         plt.grid()
-        plt.legend()
+        plt.legend(fontsize=26)
         fig.tight_layout()
         plt.savefig(Path(config.figpath, "allen_cahn_acl.pdf"))
         plt.close()
@@ -324,7 +336,7 @@ def main(config, run=True):
         for sample, name, short_name in zip(
             mixing_samples, names, short_names
         ):
-            fig = plt.figure(figsize=(6, 6))
+            fig = plt.figure(figsize=(7, 7))
             for i in range(len(sample)):
                 plt.plot(
                     sample[i].detach().cpu(),
@@ -334,6 +346,9 @@ def main(config, run=True):
                 )
             # plt.title(fr"{name}")
             fig.tight_layout()
+            axes = plt.gca()
+            axes.set_box_aspect(1.0)
+            plt.yticks([-1, 0, 1])
             plt.savefig(
                 Path(config.figpath, f"allen_cahn_mixing_{short_name}.pdf")
             )

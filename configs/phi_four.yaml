@@ -61,7 +61,7 @@ methods:
   #     bernoulli_prob_corr: 0.5
   #     mala_steps: 1
 
-  "FlEx$^2$MCMC, w corr":
+  "FlEx$^2$MCMC":
     mcmc_class: Ex2MCMC
     short_name: flex_N_10_corr
     # ess_rar: 1
@@ -80,22 +80,22 @@ methods:
       start_optim: 0 #1000
     color: 'tab:pink'
 
-  "FlEx$^2$MCMC, w/o corr":
-    mcmc_class: Ex2MCMC
-    short_name: flex_N_10
-    # ess_rar: 1
-    params:
-      N: 10
-      #grad_step: 0.001
-      #adapt_stepsize: True
-      grad_step: 0.0001
-      mala_steps: 10
-    flow:
-      lr: 0.001
-      n_steps: 10000
-      burn_in_steps: 1000
-      start_optim: 0 #1000
-    color: 'tab:olive'
+  # "FlEx$^2$MCMC, w/o corr":
+  #   mcmc_class: Ex2MCMC
+  #   short_name: flex_N_10
+  #   # ess_rar: 1
+  #   params:
+  #     N: 10
+  #     #grad_step: 0.001
+  #     #adapt_stepsize: True
+  #     grad_step: 0.0001
+  #     mala_steps: 10
+  #   flow:
+  #     lr: 0.001
+  #     n_steps: 10000
+  #     burn_in_steps: 1000
+  #     start_optim: 0 #1000
+  #   color: 'tab:olive'
 
   "Augmented MALA":
     mcmc_class: Ex2MCMC
