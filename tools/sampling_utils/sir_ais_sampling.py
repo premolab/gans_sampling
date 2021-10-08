@@ -89,6 +89,86 @@ def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
 
 sir_correlated_sampling = ebm_sampling.sampling_from_dynamics(sir_correlated_dynamics)
 
+class CorrelatedKernel:
+    def __init__(self, corr_coef=0, bernoulli_prob_corr=0, device='cpu'):
+        self.corr_coef = corr_coef
+        self.bern = torch.distributions.Bernoulli(bernoulli_prob_corr)
+        self.device = device
+
+    def __call__(self, z, proposal, N, batch_size=1):
+        correlation = self.corr_coef * self.bern.sample((batch_size,)).to(self.device)
+        latent_var = correlation[:, None] * z + (
+            1.0 - correlation[:, None] ** 2
+        ) ** 0.5 * proposal.sample(
+            (batch_size,),
+        )  # torch.randn((batch_size, z_dim))
+        correlation_new = self.corr_coef * self.bern.sample((batch_size, N)).to(self.device)
+        z_new = correlation_new[..., None] * latent_var[:, None, :] + (
+            1.0 - correlation_new[..., None] ** 2
+        ) ** 0.5 * proposal.sample(
+            (
+                batch_size,
+                N,
+            ),
+        )  # torch.randn((batch_size, N - 1, z_dim))
+        return z_new
+
+
+def adaptive_sir_correlated_dynamics(
+    z,
+    target,
+    proposal,
+    n_steps,
+    N,
+    corr_coef=0.0,
+    bernoulli_prob_corr=0.0,
+):  # z assumed from proposal !
+    z_sp = []  # vector of samples
+    batch_size, z_dim = z.shape[0], z.shape[1]
+    acceptance = torch.zeros(batch_size)
+
+    device = z.device
+
+    corr_ker = CorrelatedKernel(corr_coef, bernoulli_prob_corr, device)
+
+    for _ in range(n_steps):
+        z_pushed = z
+
+        z_sp.append(z_pushed)
+
+        # X = torch.zeros((batch_size, N, z_dim), dtype = z.dtype).to(z.device)
+        X = corr_ker(z, proposal, N, batch_size)
+        # X =  (alpha**2)*z_copy + alpha*((1- alpha**2)**0.5)*U + W*((1- alpha**2)**0.5)
+        X[np.arange(batch_size), [0] * batch_size, :] = z
+        X_view = X.view(-1, z_dim)
+
+        z_pushed = X_view
+        log_weight = target(z_pushed) - proposal.log_prob(z_pushed)
+
+        log_weight = log_weight.view(batch_size, N)
+        max_logs = torch.max(log_weight, dim=1)[0][:, None]
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
+        sum_weight = torch.sum(weight, dim=1)
+        weight = weight / sum_weight[:, None]
+
+        weight[weight != weight] = 0.0
+        weight[weight.sum(1) == 0.0] = 1.0
+
+        indices = torch.multinomial(weight, 1).squeeze().tolist()
+        mask = indices == 0
+        acceptance += mask
+
+        z = X[np.arange(batch_size), indices, :]
+
+    z_pushed = z
+
+    z_sp.append(z_pushed)
+    acceptance /= n_steps
+
+    return z_sp, acceptance
+
+cisir_adaptive_sampling = ebm_sampling.sampling_from_dynamics(adaptive_sir_correlated_dynamics)
 
 def run_experiments_gaussians(dim_arr,  
                               scale_proposal, 
