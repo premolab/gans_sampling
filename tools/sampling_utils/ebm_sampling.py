@@ -40,6 +40,26 @@ def gan_energy(z, generator, discriminator,
     else:
         return -energy
 
+def gan_energy_tempering(z, generator, discriminator,
+               proposal, normalize_to_0_1, log_prob=False, z_transform=None, T=1.0):
+    if z_transform is None:
+        generator_points = generator(z)
+    else:
+        generator_points = generator(z_transform(z))
+    if normalize_to_0_1:
+        gan_part = -T*discriminator(generator_points).view(-1)
+    else:
+        sigmoid_gan_part = T*discriminator(generator_points)
+        gan_part = -(torch.log(sigmoid_gan_part) - torch.log1p(-sigmoid_gan_part)).view(-1)
+
+    proposal_part = -proposal.log_prob(z)
+
+    energy = gan_part + proposal_part
+    if not log_prob:
+        return energy
+    else:
+        return -energy
+
 
 def gan_energy_stylegan2_ada(z, generator, discriminator,
                              proposal, normalize_to_0_1,

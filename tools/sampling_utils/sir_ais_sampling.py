@@ -6,10 +6,14 @@ import sklearn
 from distributions import (Gaussian_mixture,
                            init_independent_normal)
 
+from torch.distributions import Uniform
+
 
 from general_utils import DotDict
 from metrics import Evolution
 import ebm_sampling
+from ebm_sampling import grad_energy
+
 
 
 def compute_sir_log_weights(x, target, proposal):
@@ -50,6 +54,90 @@ def sir_independent_dynamics(z, target, proposal, n_steps, N):
 
 sir_independent_sampling = ebm_sampling.sampling_from_dynamics(sir_independent_dynamics)
 
+
+def sir_independent_mala_dynamics(z, target, proposal, n_steps, N, grad_step, eps_scale,
+                  acceptance_rule='Hastings'):
+    z_sp = []
+    batch_size, z_dim = z.shape[0], z.shape[1]
+
+    device = z.device
+
+    std_norm = (torch.distributions
+                .multivariate_normal
+                .MultivariateNormal(torch.zeros(z_dim).to(device), torch.eye(z_dim).to(device)))
+
+    uniform = Uniform(low=0.0, high=1.0)
+
+    for _ in range(n_steps):
+        z_sp.append(z.clone().detach())
+        U = torch.randint(0, N, (batch_size,)).tolist()
+        X = proposal.sample([batch_size, N])
+        X[np.arange(batch_size), U, :] = z
+        X_view = X.view(-1, z_dim)
+
+        log_weight = compute_sir_log_weights(X_view, target, proposal)
+        log_weight = log_weight.view(batch_size, N)
+
+        max_logs = torch.max(log_weight, dim=1)[0][:, None]
+        log_weight = log_weight - max_logs
+        weight = torch.exp(log_weight)
+        sum_weight = torch.sum(weight, dim=1)
+        weight = weight / sum_weight[:, None]
+
+        weight[weight != weight] = 0.
+        weight[weight.sum(1) == 0.] = 1.
+
+        indices = torch.multinomial(weight, 1).squeeze().tolist()
+
+        z = X[np.arange(batch_size), indices, :]
+        z = z.data
+
+        z.requires_grad_(True)
+
+        eps = eps_scale * std_norm.sample([batch_size])
+
+        E, grad = grad_energy(z, target, x=None)
+
+        new_z = z - grad_step * grad + eps
+        new_z = new_z.data
+        new_z.requires_grad_(True)
+
+        E_new, grad_new = grad_energy(new_z, target, x=None)
+
+        energy_part = E - E_new
+
+        propose_vec_1 = z - new_z + grad_step * grad_new
+        propose_vec_2 = new_z - z + grad_step * grad
+
+        # propose_part_1 = proposal.log_prob(propose_vec_1/eps_scale)
+        # propose_part_2 = proposal.log_prob(propose_vec_2/eps_scale)
+        propose_part_1 = std_norm.log_prob(propose_vec_1 / eps_scale)
+        propose_part_2 = std_norm.log_prob(propose_vec_2 / eps_scale)
+
+        propose_part = propose_part_1 - propose_part_2
+
+        log_accept_prob = torch.zeros_like(propose_part)
+
+        if acceptance_rule == 'Hastings':
+            log_accept_prob = propose_part + energy_part
+
+        elif acceptance_rule == 'Barker':
+            log_ratio = propose_part + energy_part
+            log_accept_prob = -torch.log(1. + torch.exp(-log_ratio))
+
+        generate_uniform_var = uniform.sample([batch_size]).to(z.device)
+        log_generate_uniform_var = torch.log(generate_uniform_var)
+        mask = log_generate_uniform_var < log_accept_prob
+
+        with torch.no_grad():
+            z[mask] = new_z[mask].detach().clone()
+            z = z.data
+            z.requires_grad_(True)
+
+    z_sp.append(z)
+    return z_sp
+
+sir_independent_mala_sampling = ebm_sampling.sampling_from_dynamics(sir_independent_mala_dynamics)
 
 def sir_correlated_dynamics(z, target, proposal, n_steps, N, alpha):
     z_sp = []
