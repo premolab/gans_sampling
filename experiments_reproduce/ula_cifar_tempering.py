@@ -37,8 +37,10 @@ device = args.device
 G = Generator_cifar10(ngpu=1)
 D = Discriminator_cifar10(ngpu=1)
 
-D.load_state_dict(torch.load(os.path.join(models_cifar_scratch_path, 'netD_epoch_199.pth')))
-G.load_state_dict(torch.load(os.path.join(models_cifar_scratch_path, 'netG_epoch_199.pth')))
+D.load_state_dict(torch.load(os.path.join(models_cifar_scratch_path, 'netD_epoch_199.pth'),
+                             map_location=torch.device('cpu')))
+G.load_state_dict(torch.load(os.path.join(models_cifar_scratch_path, 'netG_epoch_199.pth'),
+                             map_location=torch.device('cpu')))
 
 D_logits = Discriminator_logits(D, ngpu=1)
 
