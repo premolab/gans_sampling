@@ -31,7 +31,7 @@ from ebm_sampling import (load_data_from_batches,
 
 from metrics_utils import (calculate_images_statistics)
 
-args.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+args.device = 'cpu'
 device = args.device
 
 G = Generator_cifar10(ngpu=1)
