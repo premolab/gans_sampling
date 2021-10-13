@@ -1,7 +1,7 @@
 import os
 import sys
 
-path_to_tools = '/home/hdilab04/gans/gans_sampling'
+path_to_tools = '/home/daniil/pycharm_dir/gans_sampling'
 
 api_path_cifar = os.path.join(path_to_tools, 'tools', 'cifar10_utils')
 api_path_sampling = os.path.join(path_to_tools, 'tools', 'sampling_utils')
@@ -27,7 +27,7 @@ from params_cifar10 import args
 from general_utils import DotDict, Discriminator_logits
 
 from ebm_sampling import (load_data_from_batches,
-                          gan_energy_tempering, langevin_sampling)
+                          gan_energy, langevin_sampling)
 
 from metrics_utils import (calculate_images_statistics)
 
@@ -67,16 +67,14 @@ normalize_to_0_1 = True
 def z_transform(z):
     return z.unsqueeze(-1).unsqueeze(-1)
 
-T = 50.0
 
-target_gan = partial(gan_energy_tempering,
+target_gan = partial(gan_energy,
                      generator=G,
                      discriminator=D_logits,
                      proposal=proposal,
                      normalize_to_0_1=normalize_to_0_1,
                      log_prob=log_prob,
-                     z_transform=z_transform,
-                     T=T)
+                     z_transform=z_transform)
 
 random_seed = 42
 torch.manual_seed(random_seed)
@@ -90,24 +88,19 @@ n_steps = 601
 grad_step = 0.01
 eps_scale = (2 * grad_step) ** 0.5
 
-method_name = 'ula_dcgan_cifar_recalc_tempering'
-path_to_save = '/home/hdilab04/gans/saved_numpy_arrays'
+method_name = 'ula_dcgan_cifar_recalc'
+path_to_save = '/home/daniil/gans-mcmc/saved_numpy_arrays'
 file_name = f'{method_name}_nsteps_{n_steps}_step_{grad_step}_eps_{eps_scale}'
 every_step = 40
-continue_z = None
-
-z_last_np, zs = langevin_sampling(target_gan, proposal, batch_size, n,
-                                              path_to_save, file_name, every_step,
-                                              continue_z, n_steps, grad_step, eps_scale)
 
 load_np = load_data_from_batches(n, batch_size,
                                  path_to_save, file_name)
 
 batch_size = 50
 random_seed = 42
-path_to_save_np = '/home/hdilab04/gans/saved_numpy_arrays'
+path_to_save_np = '/home/daniil/gans-mcmc/saved_numpy_arrays'
 path_to_save = path_to_save_np
-method_name = f'tempering_ula_dcgan_stats_600_steps_step_{grad_step}_eps_{eps_scale}'
+method_name = f'ula_dcgan_stats_600_steps_step_{grad_step}_eps_{eps_scale}'
 dataset = "cifar10"
 calculate_is = False
 
