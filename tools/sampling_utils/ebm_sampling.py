@@ -47,18 +47,77 @@ def gan_energy_tempering(z, generator, discriminator,
     else:
         generator_points = generator(z_transform(z))
     if normalize_to_0_1:
-        gan_part = -T*discriminator(generator_points).view(-1)
+        gan_part = -discriminator(generator_points).view(-1)
     else:
-        sigmoid_gan_part = T*discriminator(generator_points)
+        sigmoid_gan_part = discriminator(generator_points)
         gan_part = -(torch.log(sigmoid_gan_part) - torch.log1p(-sigmoid_gan_part)).view(-1)
 
     proposal_part = -proposal.log_prob(z)
 
     energy = gan_part + proposal_part
+    energy = T*energy
     if not log_prob:
         return energy
     else:
         return -energy
+
+
+def report_energy(load_np, target_energy, num_bs, batchsize, device):
+    mean_energy = []
+    std_energy = []
+    num_mcmc_iter = load_np.shape[0]
+    for i in tqdm(range(num_mcmc_iter)):
+        print(f"iter = {i}")
+        cur_arr = load_np[i]
+        cur_energy = []
+        for j in range(num_bs):
+            cur_arr_bs = torch.FloatTensor(cur_arr[j * batchsize:(j + 1) * batchsize]).to(device)
+            batch_energy = list(target_energy(cur_arr_bs).detach().cpu().numpy())
+            cur_energy.extend(batch_energy)
+        cur_energy = np.array(cur_energy)
+        print(f"number of energy samples = {len(cur_energy)}")
+        cur_mean = np.mean(cur_energy)
+        cur_std = np.std(cur_energy)
+        mean_energy.append(cur_mean)
+        std_energy.append(cur_std)
+        print(f"mean = {cur_mean}")
+        print(f"std = {cur_std}")
+        print("------------")
+
+    mean_energy = np.array(mean_energy)
+    std_energy = np.array(std_energy)
+    return mean_energy, std_energy
+
+
+def report_mean_discriminator(load_np, generator, discriminator, z_transform,
+                              num_bs, batchsize, device, use_sigmoid=False):
+    mean_energy = []
+    std_energy = []
+    num_mcmc_iter = load_np.shape[0]
+    for i in tqdm(range(num_mcmc_iter)):
+        print(f"iter = {i}")
+        cur_arr = load_np[i]
+        cur_energy = []
+        for j in range(num_bs):
+            cur_arr_bs = torch.FloatTensor(cur_arr[j * batchsize:(j + 1) * batchsize]).to(device)
+            values = discriminator(generator(z_transform(cur_arr_bs)))
+            if use_sigmoid:
+                values = values.sigmoid()
+            batch_energy = list(values.detach().cpu().numpy())
+            cur_energy.extend(batch_energy)
+        cur_energy = np.array(cur_energy)
+        print(f"number of energy samples = {len(cur_energy)}")
+        cur_mean = np.mean(cur_energy)
+        cur_std = np.std(cur_energy)
+        mean_energy.append(cur_mean)
+        std_energy.append(cur_std)
+        print(f"mean = {cur_mean}")
+        print(f"std = {cur_std}")
+        print("------------")
+
+    mean_energy = np.array(mean_energy)
+    std_energy = np.array(std_energy)
+    return mean_energy, std_energy
 
 
 def gan_energy_stylegan2_ada(z, generator, discriminator,
@@ -161,16 +220,18 @@ def aggregate_sampling_output(z):
                           axis=0).transpose((1, 0, 2))
 
 
-def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale):
+def langevin_dynamics(z, target, proposal, n_steps, grad_step, eps_scale, use_noise=True):
     z_sp = []
     batch_size, z_dim = z.shape[0], z.shape[1]
 
     for _ in range(n_steps):
         z_sp.append(z)
-        eps = eps_scale*proposal.sample([batch_size])
-
         E, grad = grad_energy(z, target, x=None)
-        z = z - grad_step * grad + eps
+        if use_noise:
+            eps = eps_scale*proposal.sample([batch_size])
+            z = z - grad_step * grad + eps
+        else:
+            z = z - grad_step * grad
         z = z.data
         z.requires_grad_(True)
     z_sp.append(z)

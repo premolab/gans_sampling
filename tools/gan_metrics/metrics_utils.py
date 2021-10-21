@@ -111,6 +111,7 @@ def calculate_images_statistics(z_agg_step, G,
                                 calculate_is=True,
                                 calculate_msid_train=False,
                                 calculate_msid_test=False,
+                                z_transform=z_transform,
                                 **kwargs):
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
