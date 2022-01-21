@@ -1,0 +1,17 @@
+Dataset = 25_gaussians
+Setup for training GANs:
+Train dataset size = 64000
+Batch size = 256
+Hidden dim for prior of generator = 2
+Number of hidden layers in generator = 3
+Number of hidden layers in discriminator = 3
+Number of hidden neurons in generator = 128
+Number of hidden neurons in discriminator = 256
+Dim of output for generator = 2
+Loss type = Wasserstein
+Learning rate = 0.0001
+Lambda for gradient penalization = 0.1
+Number of epochs = 5000
+Number of generator learning passes = 1
+Number of discriminator learning passes = 100
+-------------------------------------------

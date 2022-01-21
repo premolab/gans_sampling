@@ -108,6 +108,7 @@ def main(config, model_config, run=True):
             proposal=proposal,
             normalize_to_0_1=normalize_to_0_1,
             log_prob=log_prob,
+            alpha=config.alpha
         )
 
         coords_per_dim = np.linspace(
@@ -154,7 +155,7 @@ def main(config, model_config, run=True):
         for k, v in evol.items():
             evol[k] = (
                 np.mean(np.array(v), 0),
-                np.std(np.array(v), 0, ddof=1) / np.sqrt(batch_size),
+                np.std(np.array(v), 0, ddof=1) #/ np.sqrt(batch_size),
             )
         evols["GAN"] = evol
         colors.append("black")
@@ -192,12 +193,11 @@ def main(config, model_config, run=True):
             if scaler:
                 Xs_gen = scaler.inverse_transform(Xs_gen)
 
-            # samples.append(Xs_gen[0].reshape(-1, G.n_dim))
-
-            # Xs_gen = Xs_gen[:config.evol_batch_size]
             if config.multistart:
                 Xs_gen = Xs_gen.transpose(2, 1, 0, 3)
                 Xs_gen = Xs_gen.reshape(config.n_eval, 1, -1, x_dim)
+            else:
+                Xs_gen = Xs_gen[:-1]
 
             print(Xs_gen.shape)
 
@@ -210,7 +210,7 @@ def main(config, model_config, run=True):
                     tar = target_sample
 
                 evolution = Evolution(
-                    tar,  # [:X_gen.shape[1]],
+                    tar,
                     locs=locs,
                     # target_log_prob=target,
                     sigma=sigma,
@@ -225,7 +225,7 @@ def main(config, model_config, run=True):
             for k, v in evol.items():
                 evol[k] = (
                     np.mean(np.array(v), 0),
-                    np.std(np.array(v), 0, ddof=1) / np.sqrt(batch_size),
+                    np.std(np.array(v), 0, ddof=1) #/ np.sqrt(batch_size),
                 )
             evols[method_name] = evol
             print(evol)

@@ -28,6 +28,7 @@ def gan_energy(
     discriminator,
     proposal,
     normalize_to_0_1,
+    alpha=1.,
     log_prob=False,
     z_transform=None,
 ):
@@ -49,7 +50,7 @@ def gan_energy(
     except Exception:
         proposal_part = 0  # print(gan_part, z)
 
-    energy = gan_part + proposal_part
+    energy = alpha * gan_part + proposal_part
 
     if not log_prob:
         return energy

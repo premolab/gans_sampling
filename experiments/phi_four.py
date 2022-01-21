@@ -206,10 +206,15 @@ def main(config, run=True):
                     )
 
                 # scale = 1
-                X = np.stack(burn_in_sample + out_samples, 0)
+                # print(len(burn_in_sample), len(out_samples))
+                out_samples = out_samples[-config.trunc_chain_len:]
+                #X = np.stack(burn_in_sample + out_samples, 0)
+                X = np.stack(out_samples, 0)
                 n = X.shape[0]
-                # acl_time = acl_spectrum(X - X.mean(0)[None, ...], n=n, scale=scale).mean(-1).mean(-1)
-                acl_time = acl_spectrum(X[:, :10, :], n=n).mean(-1).mean(-1)
+                acl_time = acl_spectrum(X[:, :10, :] - X[:, :10, :].mean(0)[None, ...], n=X.shape[0] // 10).mean(-1).mean(-1)
+                # print(len(acl_time))
+                # return 
+                #acl_time = acl_spectrum(X[:, :10, :], n=n).mean(-1).mean(-1)
                 print("acl computed")
                 if "respath" in config.dict.keys():
                     # sub = datetime.now().strftime("%d-%m-%Y_%H:%M")
@@ -217,6 +222,10 @@ def main(config, run=True):
                     np.save(
                         Path(config.respath, f"{info.short_name}_{sub}"),
                         acl_time,
+                    )
+                    np.save(
+                        Path(config.respath, f"{info.short_name}_{sub}_sample"),
+                        X,
                     )
 
                 # del acl_time
@@ -325,7 +334,7 @@ def main(config, run=True):
         axes.xaxis.set_label_coords(1.1, -2)
         axes.set_box_aspect(1.0)
         plt.ylabel("Autocorrelation")
-        plt.xscale("log")
+        #plt.xscale("log")
         plt.grid()
         plt.legend(fontsize=26)
         fig.tight_layout()

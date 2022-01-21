@@ -339,7 +339,7 @@ class Funnel(Distribution):
         # self.distr2 = lambda z1: -(z[...,1:]**2).sum(-1) * (-2*self.b*z1).exp() - np.log(self.dim) + 2*self.b*z1
         self.xlim = [-2, 10]
         self.ylim = [-30, 30]
-        self.scale_2d_log_prob = 30.0  # 10.0
+        self.scale_2d_log_prob = 20 # 30.0
 
     def log_prob(self, z, x=None):
         # pdb.set_trace()
@@ -372,8 +372,11 @@ class Funnel(Distribution):
         if fig is None and ax is None:
             fig, ax = plt.subplots()
 
-        xlim = [-2, 13]
-        ylim = [-60, 60]
+            xlim = [-2, 13]
+            ylim = [-60, 60]
+        else:
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
 
         x = np.linspace(*xlim, 100)
         y = np.linspace(*ylim, 100)

@@ -113,6 +113,7 @@ def main(config, model_config, run=True):
             proposal=proposal,
             normalize_to_0_1=normalize_to_0_1,
             log_prob=log_prob,
+            alpha=config.alpha
         )
 
         evols = dict()
@@ -140,12 +141,12 @@ def main(config, model_config, run=True):
         for k, v in evol.items():
             evol[k] = (
                 np.mean(np.array(v), 0),
-                np.std(np.array(v), 0, ddof=1) / np.sqrt(batch_size),
+                np.std(np.array(v), 0, ddof=1) #/ np.sqrt(batch_size),
             )
         evols["GAN"] = evol
         names.append("GAN")
         colors.append("black")
-        samples.append(gan_sample.reshape(-1, dim))
+        samples.append(scaler.inverse_transform(gan_sample.reshape(-1, dim)))
         print(evol)
 
         for method_name, info in config.methods.items():
@@ -168,24 +169,27 @@ def main(config, model_config, run=True):
                 sample = out
 
             if config.multistart:
-                sample = ULA(
-                    **config.methods.dict["ULA"]["params"], dim=G.n_dim
-                )(sample[-1], target, proposal, 2)
+                # sample = ULA(
+                #     **config.methods.dict["ULA"]["params"], dim=G.n_dim
+                # )(sample[-1], target, proposal, 2)
+                sample = sample[-1:]
 
             sample = torch.stack(sample, 0)  # len x batch x dim
+            print(sample.shape)
             sample = sample[-config.n_chunks * info.every :]
             sample = torch.stack(torch.split(sample, config.every, 0), 0)
             zs_gen = sample.permute(2, 0, 1, 3)
 
             Xs_gen = G(zs_gen).detach().cpu().numpy()
             if scaler:
-                Xs_gen = scaler.inverse_transform(Xs_gen)
+                Xs_gen = scaler.inverse_transform(Xs_gen.reshape(-1, 2)).reshape(Xs_gen.shape)
 
             if config.multistart:
                 Xs_gen = Xs_gen.transpose(2, 1, 0, 3)
                 Xs_gen = Xs_gen.reshape(config.n_eval, 1, -1, G.n_dim)
                 samples.append(Xs_gen.reshape(-1, dim))
             else:
+                Xs_gen = Xs_gen[:-1]
                 samples.append(Xs_gen[0].reshape(-1, G.n_dim))
 
             print(Xs_gen.shape)
@@ -214,7 +218,7 @@ def main(config, model_config, run=True):
             for k, v in evol.items():
                 evol[k] = (
                     np.mean(np.array(v), 0),
-                    np.std(np.array(v), 0, ddof=1) / np.sqrt(batch_size),
+                    np.std(np.array(v), 0, ddof=1) #/ np.sqrt(batch_size),
                 )
             evols[method_name] = evol
             print(evol)

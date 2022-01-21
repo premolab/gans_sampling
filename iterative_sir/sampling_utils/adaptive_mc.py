@@ -366,6 +366,7 @@ def ex2_mcmc_mala(
                 beta=beta,
             )
             acceptance += mask.float() / mala_steps
+        # print(acceptance.mean() / (step_id + 1))
 
         if step_id != n_steps - 1:
             if flow is not None:

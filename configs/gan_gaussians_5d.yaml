@@ -1,4 +1,4 @@
-batch_size : 30
+batch_size : 31
 multistart: False
 train_size : 2000
 sigma : 0.05

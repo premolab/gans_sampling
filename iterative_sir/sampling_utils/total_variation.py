@@ -69,8 +69,10 @@ def average_total_variation(
 ) -> MeanTracker:
     tracker = MeanTracker()
     keys = jax.random.split(key, n_steps)
-    for i in trange(n_steps, leave=False):
-        tracker.update(total_variation(keys[i], true, other, n_samples))
+
+    for b in range(other.shape[1]):
+        for i in trange(n_steps, leave=False):
+            tracker.update(total_variation(keys[i], true, other[:, b], n_samples))
     return tracker
 
 

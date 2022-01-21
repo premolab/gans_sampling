@@ -1,4 +1,4 @@
-batch_size : 30 #5000
+batch_size : 31 #5000
 # n_steps : 400
 # every : 50
 train_size : 2000
@@ -6,6 +6,8 @@ sigma : 0.05
 random_seed : null
 n_eval: 1
 multistart: False
+
+alpha: 1
 
 device: cpu
 figpath: figs/gan_gaussians_2d

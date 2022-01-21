@@ -3,7 +3,7 @@ figpath: figs
 respath: dump/phi_four
 data_root: data
 
-trunc_chain_len: 2500
+trunc_chain_len: 6500
 batch_size: 100
 
 # 'tab:blue'
@@ -61,12 +61,29 @@ methods:
   #     bernoulli_prob_corr: 0.5
   #     mala_steps: 1
 
+  "Augmented MALA":
+    mcmc_class: Ex2MCMC
+    short_name: ex_N_2
+    # ess_rar: 1
+    params:
+      N: 2
+      #grad_step: 0.001
+      #adapt_stepsize: True
+      grad_step: 0.0001
+      mala_steps: 10
+    flow:
+      lr: 0.001
+      n_steps: 10000
+      burn_in_steps: 1000
+      start_optim: 0 #1000
+    color: 'tab:gray'
+
   "FlEx$^2$MCMC":
     mcmc_class: Ex2MCMC
     short_name: flex_N_10_corr
     # ess_rar: 1
     params:
-      N: 10
+      N: 30
       #grad_step: 0.001 #0.01
       #adapt_stepsize: True
       grad_step: 0.0001
@@ -97,22 +114,6 @@ methods:
   #     start_optim: 0 #1000
   #   color: 'tab:olive'
 
-  "Augmented MALA":
-    mcmc_class: Ex2MCMC
-    short_name: ex_N_2
-    # ess_rar: 1
-    params:
-      N: 2
-      #grad_step: 0.001
-      #adapt_stepsize: True
-      grad_step: 0.0001
-      mala_steps: 10
-    flow:
-      lr: 0.001
-      n_steps: 10000
-      burn_in_steps: 1000
-      start_optim: 0 #1000
-    color: 'tab:gray'
 
 
 

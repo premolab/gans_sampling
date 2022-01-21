@@ -110,7 +110,7 @@ def compute_metrics(
 ):
     metrics = dict()
     key = jax.random.PRNGKey(0)
-    n_steps = 10
+    n_steps = 15
     # n_samples = 100
 
     ess = ESS(
@@ -136,10 +136,11 @@ def compute_metrics(
     mean = tracker.mean()
     std = tracker.std()
 
-    M = ot.dist(xs_true / scale, xs_pred / scale)
-    emd = ot.lp.emd2([], [], M)
-
-    metrics["emd"] = emd
+    metrics["emd"] = 0
+    for b in range(xs_pred.shape[1]):
+        M = ot.dist(xs_true / scale, xs_pred[:, b] / scale)
+        emd = ot.lp.emd2([], [], M)
+        metrics["emd"] += emd / xs_pred.shape[1]
 
     if name is not None:
         print(f"===={name}====")
@@ -150,7 +151,7 @@ def compute_metrics(
     return metrics
 
 
-def sample_nuts(target, proposal, num_samples=1000):
+def sample_nuts(target, proposal, num_samples=1000, burn_in=1000, batch_size=1):
     def true_target_energy(z):
         return -target(z)
 
@@ -160,7 +161,8 @@ def sample_nuts(target, proposal, num_samples=1000):
 
     # kernel = HMC(potential_fn=energy, step_size = 0.1, num_steps = K, full_mass = False)
     kernel_true = NUTS(potential_fn=energy, full_mass=False)
-    init_samples = proposal.sample((1,))
+    #kernel_true = HMC(potential_fn=energy, full_mass=False)
+    init_samples = proposal.sample((batch_size,))
     dim = init_samples.shape[-1]
 
     init_params = {"points": init_samples}
@@ -168,26 +170,29 @@ def sample_nuts(target, proposal, num_samples=1000):
         kernel=kernel_true,
         num_samples=num_samples,
         initial_params=init_params,
+        warmup_steps=burn_in,
     )
     mcmc_true.run()
 
-    q_true = mcmc_true.get_samples(group_by_chain=True)["points"].squeeze()
-    samples_true = np.array(q_true.view(-1, dim))
+    q_true = mcmc_true.get_samples(group_by_chain=True)["points"]
+    samples_true = np.array(q_true.view(-1, batch_size, dim))
 
     return samples_true
 
 
 def plot_metrics(metrics, ndims, savepath=None, scale=1.0, colors=None):
-    axs_names = ["Sliced TV", "ESS", "Euclidean EMD"]  # (on scaled data)']
+    axs_names = ["Sliced TV", "ESS", "EMD ratio"]  # (on scaled data)']
     ncols = len(axs_names)
 
     figs = []
     axs = []
     for _ in range(ncols):
-        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(6, 4))
+        fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(6, 6))
         figs.append(fig)
         axs.append(ax)
 
+    mala_emd = metrics['MALA']['emd']
+    
     for (name, res), color in zip(metrics.items(), colors):
         for k, v in res.items():
             res[k] = np.array(v)
@@ -205,15 +210,16 @@ def plot_metrics(metrics, ndims, savepath=None, scale=1.0, colors=None):
         arr = res["ess"]
         axs[1].plot(ndims, arr, label=name, marker="o", color=color)
 
-        arr = res["emd"]
-        axs[2].plot(ndims, arr, label=name, marker="o", color=color)
-        axs[2].set_yscale("log")
+        if name != 'MALA':
+            arr = mala_emd / res["emd"]
+            axs[2].plot(ndims, arr, label=name, marker="o", color=color)
+        #axs[2].set_yscale("log")
 
     for ax, fig, name in zip(axs, figs, axs_names):
         ax.grid()
-        ax.set_title(name)
+        ax.set_title(name.split(' ')[0])
         ax.set_xlabel("dim")
-        if name == "Euclidean EMD":
+        if name == "EMD ratio":
             ax.legend()
 
         fig.tight_layout()
@@ -260,9 +266,34 @@ def main(config, run=True):
             samples_true = sample_nuts(
                 target,
                 proposal,
+                num_samples=10000,#config.trunc_chain_len,
+                batch_size=1, #config.batch_size
+            )[:, 0, :]
+
+            sample = sample_nuts(
+                target,
+                proposal,
                 num_samples=config.trunc_chain_len,
+                batch_size=config.batch_size,
+                burn_in=config.trunc_chain_len,
             )
-            samples = []
+
+            metrics = compute_metrics(
+                    samples_true,
+                    sample,
+                    name='NUTS',
+                    trunc_chain_len=config.trunc_chain_len,
+                    ess_rar=1,
+                )
+            for k, v in metrics.items():
+                method_metric_dict['NUTS'][k] = list(
+                    method_metric_dict['NUTS'][k],
+                )
+                method_metric_dict['NUTS'][k].append(v)
+
+            #sample = samples_true #[-config.trunc_chain_len :]
+            #print(target(torch.from_numpy(np.stack(sample, 0))).mean())
+            samples = [sample[:, 0, :]]
             names = []
             colors = []
             for method_name, info in config.methods.items():
@@ -321,10 +352,11 @@ def main(config, run=True):
                         )
                         plt.close()
 
-                start = proposal.sample((1,))
+                start = proposal.sample((config.batch_size,))
 
                 # s = time.time()
                 out = mcmc(start, target, proposal, n_steps=info.n_steps)
+                print(mcmc.grad_step)
                 # e = time.time()
                 # elapsed = (e - s)
                 if isinstance(out, tuple):
@@ -334,7 +366,7 @@ def main(config, run=True):
 
                 sample = np.array(
                     [_.detach().numpy() for _ in sample],
-                ).reshape(-1, dim)
+                ).reshape(-1, config.batch_size, dim)
 
                 metrics = compute_metrics(
                     samples_true,
@@ -349,7 +381,9 @@ def main(config, run=True):
                     )
                     method_metric_dict[method_name][k].append(v)
 
-                sample = sample[-config.trunc_chain_len :]
+                sample = sample[-config.trunc_chain_len:, 0]
+
+                #print(target(torch.from_numpy(np.stack(sample, 0))).mean())
                 samples.append(sample)
 
                 if "figpath" in config.dict:
@@ -381,31 +415,45 @@ def main(config, run=True):
                         titlesize=BIGGER_SIZE,
                     )  # fontsize of the figure title
 
-                    for name, sample in zip(names, samples):
-                        # fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
-                        fig, ax = plt.subplots(1, 1, figsize=(4, 4))
-                        _, xlim, ylim = target.plot_2d(fig, ax)
+            for i, (name, sample) in enumerate(zip(['NUTS']+names, samples)):
+                # fig, axs = plt.subplots(ncols=len(names), figsize=(24, 8))
+                fig, ax = plt.subplots(1, 1, figsize=(5,5)) #(4, 4))
+                ax.scatter(
+                    sample[:config.trunc_chain_len, 0],
+                    sample[:config.trunc_chain_len, 1],
+                    alpha=0.3,
+                    s=2,
+                    color="black",
+                )
 
-                        ax.scatter(
-                            sample[:, 0],
-                            sample[:, 1],
-                            alpha=0.3,
-                            s=2,
-                            color="black",
-                        )
-                        # plt.axis('equal')
-                        ax.set_xlim(*xlim)
-                        ax.set_ylim(*ylim)
+                if i == 0:
+                    xlim = ax.get_xlim()
+                    ylim = ax.get_ylim()
+                    
+                    # xlim = (0, xlim[1])
+                    # ax.set_xlim(*xlim)
+                else:
+                    ax.set_xlim(*xlim)
+                    ax.set_ylim(*ylim)
 
-                        ax.set_box_aspect(1)
+                target.plot_2d(fig, ax)
 
-                        plt.savefig(
-                            Path(
-                                config.figpath,
-                                fr"{config.dist}_{dim}_{name}_proj.pdf",
-                            )
-                        )
-                        plt.close()
+                # plt.axis('equal')
+
+                ax.set_box_aspect(1)
+                ax.xaxis.set_tick_params(labelsize=15)
+                ax.yaxis.set_tick_params(labelsize=15)
+                #ax.axis('off')
+
+                plt.title(name)
+
+                plt.savefig(
+                    Path(
+                        config.figpath,
+                        fr"{config.dist}_{dim}_{name}_proj.pdf",
+                    )
+                )
+                plt.close()
 
         sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
 

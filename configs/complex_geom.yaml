@@ -1,10 +1,10 @@
-# batch_size : 30
+batch_size : 1 #20 #0
 device: cpu
 figpath: figs
 #respath: dump/complex_geom
 data_root: data
 
-trunc_chain_len: 1000
+trunc_chain_len: 500
 
 # 'tab:blue'
 # 'tab:orange'
@@ -13,69 +13,82 @@ trunc_chain_len: 1000
 # 'tab:purple'
 # 'tab:brown'
 # 'tab:pink'
-# 'tab:gray'
+# 'tab:gray's
 # 'tab:olive'
 # 'tab:cyan'
 
 methods:
-  MALA:
-    mcmc_class: MALA
-    n_steps: 50000
-    ess_rar: 50
-    params:
-      grad_step: 0.01
-      adapt_stepsize: True
-    color : "tab:green"
-
-  # CISIR:
-  #   mcmc_class: CISIR
-  #   n_steps: 1000
-  #   ess_rar: 1
+  # MALA:
+  #   mcmc_class: MALA
+  #   n_steps: 20000 #50000
+  #   ess_rar: 20 #50
   #   params:
-  #     N: 10
-  #     # grad_step: 0.01
-  #     # adapt_stepsize: True
-  #     corr_coef: 0.9
-  #     bernoulli_prob_corr: 0.5
-  #     # mala_steps: 50
-  #   color : "tab:orange"
+  #     grad_step: 0.25
+  #     adapt_stepsize: True
+  #   color : "tab:green"
 
   "Ex$^2$MCMC":
     mcmc_class: Ex2MCMC
     n_steps: 1000
     ess_rar: 1
     params:
-      N: 10
-      grad_step: 0.01
-      adapt_stepsize: True
-      corr_coef: 0.9
-      bernoulli_prob_corr: 0.5
-      mala_steps: 50
+      N: 100
+      grad_step: .5
+      adapt_stepsize: False #True
+      corr_coef: 0.975
+      bernoulli_prob_corr: 0.5 #75
+      mala_steps: 3
     color : "tab:red"
 
-  # FlCISIR:
-  #   mcmc_class: CISIR
+  # "FlEx$^2$MCMC, 50 steps":
+  #   mcmc_class: Ex2MCMC
+  #   n_steps: 2000
+  #   ess_rar: 1
   #   params:
-  #     N: 5
-  #     corr_coef: 0.9
-  #     bernoulli_prob_corr: 0.5
+  #     N: 300
+  #     grad_step: .5
+  #     adapt_stepsize: True
+  #     corr_coef: 0.975
+  #     bernoulli_prob_corr: 0.5 #75
+  #     mala_steps: 50
   #   flow:
-  #     num_flows: 4
-  #     lr: 0.01
-  #     batch_size: 100
+  #     num_flows: 6
+  #     lr: 0.005
+  #     batch_size: 200
   #     n_steps: 200
+  #   color: 'tab:purple'
 
-  "FlEx$^2$MCMC":
+
+  # "FlEx$^2$MCMC 10steps":
+  #   mcmc_class: Ex2MCMC
+  #   n_steps: 1000
+  #   ess_rar: 1
+  #   params:
+  #     N: 300
+  #     grad_step: .5
+  #     adapt_stepsize: True
+  #     corr_coef: 0.975
+  #     bernoulli_prob_corr: 0.5 #75
+  #     mala_steps: 10
+  #   flow:
+  #     num_flows: 6
+  #     lr: 0.005
+  #     batch_size: 200
+  #     n_steps: 200
+  #   color: 'tab:orange'
+
+
+  "FlEx$^2$MCMC 3steps":
     mcmc_class: Ex2MCMC
     n_steps: 1000
     ess_rar: 1
     params:
-      N: 10
-      grad_step: 0.01
+      N: 100 #100
+      grad_step: .5
       adapt_stepsize: True
-      corr_coef: 0.9
-      bernoulli_prob_corr: 0.5
-      mala_steps: 50
+      corr_coef: 0.975
+      bernoulli_prob_corr: 0.5 #75
+      mala_steps: 3 #10
     flow:
       num_flows: 6
       lr: 0.005

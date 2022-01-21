@@ -1,5 +1,6 @@
 import argparse
 import datetime
+from os import name
 import random
 import time
 from collections import defaultdict
@@ -44,9 +45,42 @@ from iterative_sir.sampling_utils.metrics import (
 sns.set_theme(style="ticks", palette="deep")
 
 
+def sample_nuts(target, proposal, num_samples=1000, batch_size=1):
+    def true_target_energy(z):
+        return -target(z)
+
+    def energy(z):
+        z = z["points"]
+        return true_target_energy(z).sum()
+
+    # kernel = HMC(potential_fn=energy, step_size = 0.1, num_steps = K, full_mass = False)
+    kernel_true = NUTS(potential_fn=energy, full_mass=False)
+    #kernel_true = HMC(potential_fn=energy, full_mass=False)
+    init_samples = proposal.sample((batch_size,))
+    dim = init_samples.shape[-1]
+
+    init_params = {"points": init_samples}
+    mcmc_true = MCMC(
+        kernel=kernel_true,
+        num_samples=num_samples,
+        warmup_steps=0,
+        initial_params=init_params,
+    )
+    mcmc_true.run()
+
+    q_true = mcmc_true.get_samples(group_by_chain=True)["points"] #.squeeze()
+    samples_true = np.array(q_true.view(num_samples, batch_size, dim))
+
+    return samples_true
+
+
 def classification(theta, x, y):
     # pdb.set_trace()
-    P = 1.0 / (1.0 + torch.exp(-torch.matmul(x, theta.transpose(0, 1))))
+    P = []
+    for theta_ in theta.split(10000):
+        P.append(1.0 / (1.0 + torch.exp(-torch.matmul(x, theta_.transpose(0, 1)))))
+    P = torch.cat(P, 1)
+    #P = 1.0 / (1.0 + torch.exp(-torch.matmul(x, theta.transpose(0, 1))))
     ll = y[..., None] * torch.log(torch.clamp(P, min=1e-10)) + (
         1 - y[..., None]
     ) * torch.log(torch.clamp(1 - P, min=1e-10))
@@ -60,21 +94,24 @@ def compute_average_mean_posterior(samples, dataset):
         chunk_len = 1000
         ll = 0
         for j in range(0, len(dataset.x_test), chunk_len):
-            x_chunk = dataset.x_test[j : j + chunk_len]
-            y_chunk = dataset.y_test[j : j + chunk_len]
-            ll = (
-                ll
-                + classification(
-                    torch.tensor(test_samples).view(-1, dim),
-                    x_chunk,
-                    y_chunk,
+            #test_samples = np.ones((300000, 50, 65)).astype(float)
+            #print(test_samples.shape, max(1, test_samples.shape[0] // 10000))
+            for sample in np.array_split(test_samples, max(1, test_samples.shape[0] // 1000)):
+                x_chunk = dataset.x_test[j : j + chunk_len]
+                y_chunk = dataset.y_test[j : j + chunk_len]
+                ll = (
+                    ll
+                    + classification(
+                        torch.FloatTensor(sample).view(-1, dim),
+                        x_chunk,
+                        y_chunk,
+                    )
+                    .exp()
+                    .numpy()
+                    .sum(0)
+                    .reshape(sample.shape[:-1])
+                    .sum(0) / len(test_samples)
                 )
-                .exp()
-                .numpy()
-                .sum(0)
-                .reshape(test_samples.shape[:-1])
-                .mean(0)
-            )
         ll_post.append(ll / len(dataset.x_test))
     return ll_post
 
@@ -138,14 +175,14 @@ def parse_arguments():
 
 def main(dataset, config, run=True):
     n_steps = config.n_steps
-    trunc_chain_len = int(0.5 * n_steps)
+    #trunc_chain_len = int(0.5 * n_steps)
 
     target = BayesianLogRegression(dataset, device=config.device)
     dim = target.d
     metrics = MetricsTracker(fields=["method", "ess", "ess_per_s", "time"])
 
     if run:
-        proposal = IndependentNormal(dim=dim, device=config.device)
+        proposal = IndependentNormal(dim=dim, device=config.device, scale=config.scale)
         colors = []
         samples = []
 
@@ -165,61 +202,74 @@ def main(dataset, config, run=True):
             if "lr" in params:
                 params["lr"] = eval(params["lr"])
 
-            mcmc = mcmc_class(**params, dim=dim)
-            if "flow" in info.dict.keys():
-                verbose = mcmc.verbose
-                mcmc.verbose = False
-                flow = RNVP(info.flow.num_flows, dim=dim)
-
-                flow_mcmc = FlowMCMC(
-                    target,
-                    proposal,
-                    flow,
-                    mcmc,
-                    batch_size=info.flow.batch_size,
-                    lr=info.flow.lr,
-                    jump_tol=1e6,
-                )
-                flow.train()
-                out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
-                #
-                assert not torch.isnan(next(flow.parameters())[0, 0]).item()
-
-                flow.eval()
-                mcmc.flow = flow
-                mcmc.verbose = verbose
-
-            start = proposal.sample([config.batch_size])
-
-            s = time.time()
-            out = mcmc(start, target, proposal, n_steps=n_steps)
-            e = time.time()
-            elapsed = e - s  # / 60
-            if isinstance(out, tuple):
-                sample = out[0]
+            if method_name == 'NUTS':
+                s = time.time()
+                sample = sample_nuts(target, proposal, info.n_steps, batch_size=config.batch_size)
+                e = time.time()
+                elapsed = e - s
+                print(sample.shape)
             else:
-                sample = out
+                mcmc = mcmc_class(**params, dim=dim)
 
-            # ess_arr = []
-            sample = torch.stack(sample, 0).detach().cpu().numpy()
-            trunc_sample = sample[-trunc_chain_len:]
-            batch_size = sample.shape[1]
-            ess = ESS(
-                acl_spectrum(trunc_sample - trunc_sample.mean(0)[None, ...]),
-            )
-            assert ess.shape[0] == batch_size
+                if "flow" in info.dict.keys():
+                    verbose = mcmc.verbose
+                    mcmc.verbose = False
+                    flow = RNVP(info.flow.num_flows, dim=dim)
+
+                    flow_mcmc = FlowMCMC(
+                        target,
+                        proposal,
+                        flow,
+                        mcmc,
+                        batch_size=info.flow.batch_size,
+                        lr=info.flow.lr,
+                        jump_tol=1e6,
+                    )
+                    flow.train()
+                    out_samples, nll = flow_mcmc.train(n_steps=info.flow.n_steps)
+                    #
+                    assert not torch.isnan(next(flow.parameters())[0, 0]).item()
+
+                    flow.eval()
+                    mcmc.flow = flow
+                    mcmc.verbose = verbose
+
+                start = proposal.sample([config.batch_size])
+
+                s = time.time()
+                out = mcmc(start, target, proposal, n_steps=info.burn_in + info.n_steps)
+                e = time.time()
+                elapsed = e - s  # / 60
+                print(len(out))
+                if isinstance(out, tuple):
+                    sample = out[0]
+                    print((out[1]*(info.burn_in + info.n_steps)).numpy().astype(int))
+                else:
+                    sample = out
+
+                # ess_arr = []
+                sample = torch.stack(sample, 0).detach().cpu().numpy()
+            trunc_sample = sample[-info.n_steps:]
+            #batch_size = trunc_sample.shape[1]
+            #ess = ESS(
+            #    acl_spectrum(trunc_sample[-3000:] - trunc_sample[-3000:].mean(0)[None, ...]),
+            #)
+            #assert ess.shape[0] == batch_size
+            ess = np.array([0])
             print(
                 f"Method: {method_name}, ESS: {ess.mean():.4f}, sampling time: {elapsed:.2f}, ESS/s: {ess.mean()*n_steps/elapsed:.2f}",
             )
 
-            samples.append(sample)
+            samples.append(trunc_sample)
             metrics.stor.method.append(method_name)
             metrics.stor.ess.append(ess)
             metrics.stor.time.append(elapsed)
 
         mean_post = compute_average_mean_posterior(samples, dataset)
 
+        print(np.array(mean_post))
         print(np.array(mean_post).mean(1))
+        print(np.array(mean_post).std(1))
         print(np.median(mean_post, 1))
 
         sub = datetime.datetime.now().strftime("%d-%m-%Y_%H:%M")
@@ -228,11 +278,11 @@ def main(dataset, config, run=True):
             k: v for (k, _), v in zip(config.methods.items(), mean_post)
         }
 
-        if "respath" in config.dict:
-            resdir = Path(config.respath, config.dataset)
-            resdir.mkdir(parents=True, exist_ok=True)
-            respath = Path(resdir, f"{sub}.npy")
-            np.save(respath.open("wb"), mean_post)
+        # if "respath" in config.dict:
+        #     resdir = Path(config.respath, config.dataset)
+        #     resdir.mkdir(parents=True, exist_ok=True)
+        #     respath = Path(resdir, f"{sub}.npy")
+        #     np.save(respath.open("wb"), mean_post)
 
     else:
         mean_post = np.load(Path(config.respath).open("rb"))
@@ -246,11 +296,11 @@ def main(dataset, config, run=True):
             for method_name, _ in config.methods.items()
         }
 
-    if "figpath" in config.dict:
-        fig = plot(
-            list(mean_post.values()), list(mean_post.keys()), colors
-        )  # metrics.stor.method, colors)
-        plt.savefig(Path(config.figpath, f"bayesian_lr_{config.dataset}.pdf"))
+    # if "figpath" in config.dict:
+    #     fig = plot(
+    #         list(mean_post.values()), list(mean_post.keys()), colors
+    #     )  # metrics.stor.method, colors)
+    #     plt.savefig(Path(config.figpath, f"bayesian_lr_{config.dataset}.pdf"))
 
 
 if __name__ == "__main__":

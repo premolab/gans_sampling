@@ -1,76 +1,66 @@
-batch_size : 30
+batch_size : 15
+scale: 3
 device: cpu
 figpath: figs
 respath: dump/bayesian_lr
 data_root: data
 
-methods:
-  i-SIR:
-    mcmc_class: CISIR
-    params:
-      N: 5
-    color: "tab:blue"
+n_steps: &n_steps 50000
 
-  # CISIR:
+methods:
+  NUTS:
+    mcmc_class: NUTS
+    params: {}
+    burn_in:  #500 #0
+    n_steps: 500 #1000 #*n_steps 3000
+    color: 'tab:orange'
+
+  # i-SIR:
   #   mcmc_class: CISIR
   #   params:
-  #     N: 5
-  #     corr_coef: 0.9
-  #     bernoulli_prob_corr: 0.5
-  #   color: "tab:orange"
+  #     N: 300
+  #   burn_in: 50000 #25000
+  #   n_steps: 10000 #*n_steps
+  #   color: "tab:blue"
 
-  MALA:
-    mcmc_class: MALA
-    params:
-      grad_step: 0.01
-      adapt_stepsize: True
-    color: "tab:green"
+  # MALA:
+  #   mcmc_class: MALA
+  #   params:
+  #     grad_step: 0.0005
+  #     adapt_stepsize:  False #True
+  #   burn_in: 3000 #100000
+  #   n_steps: 300000  #3000 #20000 #*n_steps
+  #   color: "tab:green"
 
-  # "Ex$^2$MCMC (1)":
+  # "Ex$^2$MCMC":
   #   mcmc_class: Ex2MCMC
   #   params:
-  #     N: 5
+  #     N: 30 #5
   #     grad_step: 0.01
   #     adapt_stepsize: True
-  #     mala_steps: 1
-  #   color: "tab:purple"
-
-  "Ex$^2$MCMC":
-    mcmc_class: Ex2MCMC
-    params:
-      N: 5
-      grad_step: 0.01
-      adapt_stepsize: True
-      corr_coef: 0.9
-      bernoulli_prob_corr: 0.5
-      mala_steps: 1
-    color: "tab:red"
-
-  # FlCISIR:
-  #   mcmc_class: CISIR
-  #   params:
-  #     N: 5
   #     corr_coef: 0.9
   #     bernoulli_prob_corr: 0.5
+  #     mala_steps: 1
+  #   burn_in: 0
+  #   n_steps: 3000 #*n_steps
+  #   color: "tab:red"
+
+  # FlEx$^2$MCMC:
+  #   mcmc_class: Ex2MCMC
+  #   params:
+  #     N: 30 #5
+  #     grad_step: 0.01
+  #     adapt_stepsize: True
+  #     corr_coef: 0.9
+  #     bernoulli_prob_corr: 0.5
+  #     mala_steps: 1
+  #   burn_in: 0 #100
+  #   n_steps: 3000 #*n_steps
   #   flow:
   #     num_flows: 4
   #     lr: 0.01
   #     batch_size: 100
   #     n_steps: 200
-  #   color: 'tab:olive'
+  #   color: 'tab:pink'
 
-  FlEx$^2$MCMC:
-    mcmc_class: Ex2MCMC
-    params:
-      N: 5
-      grad_step: 0.01
-      adapt_stepsize: True
-      corr_coef: 0.9
-      bernoulli_prob_corr: 0.5
-      mala_steps: 1
-    flow:
-      num_flows: 4
-      lr: 0.01
-      batch_size: 100
-      n_steps: 200
-    color: 'tab:pink'
+

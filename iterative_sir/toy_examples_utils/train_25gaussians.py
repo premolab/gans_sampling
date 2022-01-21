@@ -3,26 +3,28 @@ import importlib
 import os
 import random
 import time
+import itertools
+from pathlib import Path
 
 import numpy as np
 import sklearn.datasets
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from gan_fc_models import (
+from iterative_sir.toy_examples_utils.gan_fc_models import (
     Discriminator_fc,
     Generator_fc,
     weights_init_1,
     weights_init_2,
 )
-from gan_train import train_gan
+from iterative_sir.toy_examples_utils.gan_train import train_gan
 from matplotlib import pyplot as plt
-from paths import path_to_save_local, path_to_save_remote, port_to_remote
+#from paths import path_to_save_local, path_to_save_remote, port_to_remote
 from sklearn.preprocessing import StandardScaler
 from torch import autograd
 from torch.autograd import Variable
 
-from toy_examples_utils import (
+from iterative_sir.toy_examples_utils import (
     logging,
     prepare_25gaussian_data,
     prepare_dataloader,
@@ -40,7 +42,7 @@ params_module = importlib.import_module(module_name)
 random_seed = params_module.random_seed
 batch_size = params_module.batch_size
 train_dataset_size = params_module.train_dataset_size
-sigma = params_module.sigma
+sigma = params_module.sigma #/ 2
 n_dim = params_module.n_dim
 n_layers_d = params_module.n_layers_d
 n_layers_g = params_module.n_layers_g
@@ -67,12 +69,38 @@ device = params_module.device
 # torch.manual_seed(random_seed)
 # np.random.seed(random_seed)
 # random.seed(random_seed)
+def prepare_100gaussian_data(batch_size=1000, sigma=0.05, random_seed=42):
+    dataset = []
+    for i in range(batch_size // 100):
+        for x in np.arange(-2, 2.5, 0.5):
+            for y in np.arange(-2, 2.5, 0.5):
+                point = np.random.randn(2) * sigma
+                point[0] += x
+                point[1] += y
+                dataset.append(point)
+    dataset = np.array(dataset, dtype=np.float32)
+    np.random.seed(random_seed)
+    random.seed(random_seed)
+    np.random.shuffle(dataset)
+    means = np.array(
+        list(itertools.product(np.arange(-2, 2.5, 0.5), repeat=2)),
+        dtype=np.float64,
+    )
+    # dataset /= 2.828 # stdev
+    return dataset, means
+
 
 X_train, means = prepare_25gaussian_data(
     train_dataset_size,
     sigma,
     random_seed,
 )
+# X_train, means = prepare_100gaussian_data(
+#     train_dataset_size,
+#     sigma,
+#     random_seed,
+# )
+
 scaler = StandardScaler()
 X_train_std = scaler.fit_transform(X_train)
 # X_train_batches = prepare_train_batches(X_train, BATCH_SIZE)
@@ -83,7 +111,7 @@ train_dataloader = prepare_dataloader(
 )
 
 G = Generator_fc(
-    n_dim=n_dim,
+    n_dim=256,#n_dim,
     n_layers=n_layers_g,
     n_hid=n_hid_g,
     n_out=n_out,
@@ -97,25 +125,29 @@ D = Discriminator_fc(
     non_linear=nn.ReLU(),
     device=device,
 ).to(device)
-G.init_weights(weights_init_2, random_seed=random_seed)
-D.init_weights(weights_init_2, random_seed=random_seed)
+# G.init_weights(weights_init_2, random_seed=random_seed)
+# D.init_weights(weights_init_2, random_seed=random_seed)
+# G.load_state_dict(torch.load(next(Path('models/models_100gaussians').glob('*7_generator.pth'))))
+# D.load_state_dict(torch.load(next(Path('models/models_100gaussians').glob('*7_discriminator.pth'))))
 
 d_optimizer = torch.optim.Adam(D.parameters(), betas=betas, lr=lr_init)
 #                               weight_decay = weight_decay)
 g_optimizer = torch.optim.Adam(G.parameters(), betas=betas, lr=lr_init)
 #                               weight_decay = weight_decay)
 
-cur_time = datetime.datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
-new_dir = os.path.join(path_to_save_local, cur_time)
-os.mkdir(new_dir)
-path_to_plots = os.path.join(new_dir, "plots")
-path_to_models = os.path.join(new_dir, "models")
-os.mkdir(path_to_plots)
-os.mkdir(path_to_models)
-path_to_logs = os.path.join(new_dir, "logs.txt")
+# g_optimizer.load_state_dict(torch.load(next(Path('models/models_100gaussians').glob('*_opt_generator.pth'))))
+# d_optimizer.load_state_dict(torch.load(next(Path('models/models_100gaussians').glob('*_opt_discriminator.pth'))))
+# cur_time = datetime.datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+# new_dir = os.path.join(path_to_save_local, cur_time)
+# os.mkdir(new_dir)
+# path_to_plots = os.path.join(new_dir, "plots")
+# path_to_models = os.path.join(new_dir, "models")
+# os.mkdir(path_to_plots)
+# os.mkdir(path_to_models)
+# path_to_logs = os.path.join(new_dir, "logs.txt")
 
 logging(
-    path_to_logs=path_to_logs,
+    path_to_logs='log.txt',#path_to_logs,
     mode=mode,
     train_dataset_size=train_dataset_size,
     batch_size=batch_size,
@@ -155,10 +187,10 @@ train_gan(
     normalize_to_0_1=normalize_to_0_1,
     scaler=scaler,
     mode=mode,
-    path_to_logs=path_to_logs,
-    path_to_models=path_to_models,
-    path_to_plots=path_to_plots,
-    path_to_save_remote=path_to_save_remote,
-    port_to_remote=port_to_remote,
-    plot_mhgan=plot_mhgan,
+    # path_to_logs=path_to_logs,
+    path_to_models='dump/25_gaussians_256', #path_to_models,
+    path_to_plots='dump/25_gaussians_256',#path_to_plots,
+    # path_to_save_remote=path_to_save_remote,
+    # port_to_remote=port_to_remote,
+    plot_mhgan=False,#plot_mhgan,
 )
