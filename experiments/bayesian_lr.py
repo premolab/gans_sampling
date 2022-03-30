@@ -45,7 +45,7 @@ from iterative_sir.sampling_utils.metrics import (
 sns.set_theme(style="ticks", palette="deep")
 
 
-def sample_nuts(target, proposal, num_samples=1000, batch_size=1):
+def sample_nuts(target, proposal, num_samples=1000, batch_size=1, warmup_steps=0):
     def true_target_energy(z):
         return -target(z)
 
@@ -63,7 +63,7 @@ def sample_nuts(target, proposal, num_samples=1000, batch_size=1):
     mcmc_true = MCMC(
         kernel=kernel_true,
         num_samples=num_samples,
-        warmup_steps=0,
+        warmup_steps=warmup_steps,
         initial_params=init_params,
     )
     mcmc_true.run()

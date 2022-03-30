@@ -1,0 +1,89 @@
+batch_size: &batch_size 1000
+n_steps: &n_steps 2000
+burn_in: &burn_in 1000
+
+min_dim: 5
+max_dim: 40
+step_dim: 5
+plot_dims: [5, 10, 20, 40]
+d1: 0
+d2: 1
+xlim: [-3, 3]
+ylim: [-3, 3]
+
+
+loc_1_target : -1.0
+loc_1_nonzero: 40
+loc_2_target : 1.0
+loc_2_nonzero: 40
+scale_target : 0.5
+scale_proposal : 1.0
+loc_proposal : 0
+
+
+device: cpu
+figpath: figs/2_gaussians_isotr
+respath: dump
+
+methods:
+  NUTS:
+    n_steps : *n_steps
+    burn_in : *burn_in
+    mcmc_class: NUTS
+    params: {}
+    # every : 100
+    color : "tab:orange"
+    batch_size: *batch_size
+
+  i-SIR:
+    n_steps : *n_steps
+    burn_in : *burn_in
+    mcmc_class: CISIR
+    params:
+      N: 10
+    # every : 100
+    color : "tab:blue"
+    batch_size: *batch_size
+
+  MALA:
+    mcmc_class: MALA
+    n_steps : *n_steps
+    burn_in : *burn_in
+    params:
+      grad_step: 0.01
+      adapt_stepsize: True
+    # every : 100
+    color : "tab:green"
+    batch_size: *batch_size
+
+  "Ex$^2$MCMC":
+    mcmc_class: Ex2MCMC
+    n_steps : *n_steps
+    burn_in : *burn_in
+    params:
+      N: 10
+      grad_step: 0.01
+      adapt_stepsize: True
+      corr_coef: 0.9
+      bernoulli_prob_corr: 0.5
+      mala_steps: 1
+    # every : 100
+    color : "tab:red"
+    batch_size: *batch_size
+
+
+  "Ex$^2$MCMC no ind.":
+    mcmc_class: Ex2MCMC
+    n_steps : *n_steps
+    burn_in : *burn_in
+    params:
+      N: *batch_size
+      grad_step: 0.01
+      adapt_stepsize: True
+      corr_coef: 0.95
+      bernoulli_prob_corr: 0.9
+      mala_steps: 1
+      ind_chains: False
+    # every : 100
+    color : "tab:purple"
+    batch_size: 1

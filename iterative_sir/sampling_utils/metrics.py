@@ -165,13 +165,14 @@ class Evolution:
         self.l2_div = []
 
     @staticmethod
-    def make_assignment(X_gen, locs, sigma=0.05, q=0.95):
+    def make_assignment(X_gen, locs, sigma=0.05, q=0.95, ):
         n_modes, x_dim = locs.shape
         dists = torch.norm((X_gen[:, None, :] - locs[None, :, :]), p=2, dim=-1)
         chi2_quantile = chi2.ppf(q, x_dim)
-        test_dist = (chi2_quantile * (sigma ** 2)) ** 0.5
-        assignment = dists < test_dist
-        return assignment
+        test_dist = chi2_quantile ** .5 * sigma
+        assignment_chi2 = dists < test_dist
+        assignment_2sigma = dists < 2 * sigma
+        return assignment_chi2, assignment_2sigma
 
     @staticmethod
     def compute_mode_std(X_gen, assignment):
