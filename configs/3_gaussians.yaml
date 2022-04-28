@@ -1,0 +1,59 @@
+# random_seed : 42
+batch_size: &batch_size 10
+n_steps: &n_steps 302
+burn_in: &burn_in 0
+
+plot_step: 300
+xlims: [-6.2, 6.2]
+ylims: [-6.2, 6.2]
+steps: [25, 50, 75, 100]
+
+loc_1_target : [0, 3]
+loc_2_target : [2.598, -1.5]
+loc_3_target : [-2.598, -1.5]
+
+scale_proposal : 3.0
+loc_proposal : 0
+a: 3.0
+sigma: 1.0
+
+ax_pts: 100 # number of points on each axis for grid needed for metric computation
+n_data_pts: 10000
+
+device: cpu
+figpath: figs/3_gaussians
+respath: dump
+
+methods:
+  i-SIR:
+    n_steps : *n_steps
+    burn_in : *burn_in
+    mcmc_class: CISIR
+    params:
+      N: 3
+    color : "tab:blue"
+    batch_size: *batch_size
+
+  MALA:
+    mcmc_class: MALA
+    n_steps : *n_steps
+    burn_in : *burn_in
+    params:
+      grad_step: 0.2
+      adapt_stepsize: True
+    color : "tab:green"
+    batch_size: *batch_size
+
+  "Ex$^2$MCMC":
+    mcmc_class: Ex2MCMC
+    n_steps : *n_steps
+    burn_in : *burn_in
+    params:
+      N: 3
+      grad_step: 0.2
+      adapt_stepsize: False
+      corr_coef: 0.
+      bernoulli_prob_corr: 0.
+      mala_steps: 1
+    color : "tab:red"
+    batch_size: *batch_size
