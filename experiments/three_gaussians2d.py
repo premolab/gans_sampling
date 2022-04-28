@@ -65,7 +65,7 @@ def compute_tv(logp, logq, xlims, ylims, ax_pts=100):
     xs = torch.linspace(*xlims, ax_pts)
     ys = torch.linspace(*ylims, ax_pts)
     pts = torch.stack(torch.meshgrid(xs, ys), 2).reshape(-1, 2)
-    volume = np.prod(xlims) * np.prod(ylims) 
+    volume = (xlims[1] - xlims[0]) * (ylims[1] - ylims[0])
 
     return 0.5 * torch.abs(logp(pts).exp() - logq(pts).exp()).mean().item() * volume
 
@@ -79,7 +79,7 @@ def compute_metrics(sample, target, steps, data, xlims, ylims, ax_pts=100):
             logp = lambda x: torch.from_numpy(kde.logpdf(x.T))
             xs = torch.linspace(*xlims, ax_pts)
             ys = torch.linspace(*ylims, ax_pts)
-            volume = np.prod(xlims) * np.prod(ylims)
+            volume = (xlims[1] - xlims[0]) * (ylims[1] - ylims[0])
             pts = torch.stack(torch.meshgrid(xs, ys), 2).reshape(-1, 2)
             f_kl = (logp(pts).exp() * (logp(pts) - target(pts))).mean().item() * volume
             loc_result["forward KL"].append(f_kl)
