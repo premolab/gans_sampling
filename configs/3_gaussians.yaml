@@ -1,28 +1,38 @@
 # random_seed : 42
-batch_size: &batch_size 10
-n_steps: &n_steps 302
+device: cpu
+figpath: figs/3_gaussians
+respath: dump
+
+batch_size: &batch_size 100 #0
+n_steps: &n_steps 802
 burn_in: &burn_in 0
+
+dim: 2
+
+# target
+loc_1_target : [0, 3]
+loc_2_target : [2.598, -1.5]
+loc_3_target : [-2.598, -1.5]
+mode_weights: [2., 1., 1.]
+a: 3.0
+sigma: 1.0
+
+# proposal
+scale_proposal : 3.0
+loc_proposal : 0
+
+# metrics and plotting
+ax_pts: 100 # number of points on each axis for grid needed for metric computation
+n_data_pts: 10000
+per_chain: False #True
 
 plot_step: 300
 xlims: [-6.2, 6.2]
 ylims: [-6.2, 6.2]
-steps: [25, 50, 75, 100]
-
-loc_1_target : [0, 3]
-loc_2_target : [2.598, -1.5]
-loc_3_target : [-2.598, -1.5]
-
-scale_proposal : 3.0
-loc_proposal : 0
-a: 3.0
-sigma: 1.0
-
-ax_pts: 100 # number of points on each axis for grid needed for metric computation
-n_data_pts: 10000
-
-device: cpu
-figpath: figs/3_gaussians
-respath: dump
+steps: [10, 25, 50, 100, 200, 400, 800]
+xscale: log
+d1: 0
+d2: 1
 
 methods:
   i-SIR:
