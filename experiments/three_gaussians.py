@@ -76,7 +76,7 @@ def compute_tv(logp, logq, xlims, ylims, ax_pts=100):
     return 0.5 * torch.abs(logp(pts).exp() - logq(pts).exp()).mean().item() * volume
 
 
-def compute_metrics(sample, target, steps, data, xlims, ylims, ax_pts=100, per_chain=True):
+def compute_metrics(sample, target, steps, data, xlims, ylims, ax_pts=100, per_chain=True, chunk_len=1):
     result = {"forward KL": [], "backward KL": [], "TV": []}
     for step_id, step in tqdm(enumerate(steps)):
         loc_result = {"forward KL": [], "backward KL": [], "TV": []}
@@ -101,7 +101,7 @@ def compute_metrics(sample, target, steps, data, xlims, ylims, ax_pts=100, per_c
                 )
             result["TV"].append((np.mean(loc_result["TV"]), np.std(loc_result["TV"])))
         else:
-            prev_step = step - 10 #10 #0 if step_id  == 0 else steps[step_id-1]
+            prev_step = max(0, step - chunk_len) #0 if step_id  == 0 else steps[step_id-1]
             x = sample[prev_step : step].reshape(-1, sample.shape[-1])
             kde = scipy.stats.gaussian_kde(torch.unique(x, dim=0).T)
             logp = lambda y: torch.from_numpy(kde.logpdf(y.T))
@@ -153,6 +153,8 @@ def plot_metrics(
     axs[ax_id].legend()
     if xscale:
         axs[ax_id].set_xscale(xscale)
+    axs[ax_id].set_xticks(steps[::2])
+    axs[ax_id].set_xticklabels(steps[::2])
     ax_id += 1
 
     for i, (method_name, arr) in enumerate(backward_kl.items()):
@@ -168,6 +170,8 @@ def plot_metrics(
     axs[ax_id].legend()
     if xscale:
         axs[ax_id].set_xscale(xscale)
+    axs[ax_id].set_xticks(steps[::2])
+    axs[ax_id].set_xticklabels(steps[::2])
     ax_id += 1
 
     for i, (method_name, arr) in enumerate(tv.items()):
@@ -183,6 +187,8 @@ def plot_metrics(
     axs[ax_id].legend()
     if xscale:
         axs[ax_id].set_xscale(xscale)
+    axs[ax_id].set_xticks(steps[::2])
+    axs[ax_id].set_xticklabels(steps[::2])
     ax_id += 1
 
     for ax, fig, name in zip(
@@ -268,7 +274,8 @@ def main(config, run=True):
             config.xlims,
             config.ylims,
             config.ax_pts,
-            per_chain=config.per_chain
+            per_chain=config.per_chain,
+            chunk_len=config.chunk_len
         )
         print(method_name, local_result)
         print(f"Elapsed: {elapsed:.2f} s")

@@ -13,7 +13,7 @@ dim: 2
 loc_1_target : [0, 3]
 loc_2_target : [2.598, -1.5]
 loc_3_target : [-2.598, -1.5]
-mode_weights: [2., 1., 1.]
+mode_weights: [4., 1., 1.]
 a: 3.0
 sigma: 1.0
 
@@ -25,6 +25,7 @@ loc_proposal : 0
 ax_pts: 100  # number of points on each axis for grid needed for metric computation
 n_data_pts: 10000
 per_chain: True  # sample to compute metrics comes either from a single chain or from slice of chains
+chunk_len: null
 
 plot_step: 300
 xlims: [-6.2, 6.2]
@@ -50,7 +51,7 @@ methods:
     burn_in : *burn_in
     params:
       grad_step: 0.2
-      adapt_stepsize: True
+      adapt_stepsize: False
     color : "tab:green"
     batch_size: *batch_size
 
