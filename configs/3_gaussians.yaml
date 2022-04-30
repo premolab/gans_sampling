@@ -3,7 +3,7 @@ device: cpu
 figpath: figs/3_gaussians
 respath: dump
 
-batch_size: &batch_size 10 #0
+batch_size: &batch_size 25 #0
 n_steps: &n_steps 802
 burn_in: &burn_in 0
 
@@ -14,11 +14,11 @@ loc_1_target : [0, 3]
 loc_2_target : [2.598, -1.5]
 loc_3_target : [-2.598, -1.5]
 mode_weights: [4., 1., 1.]
-a: 3.0
+a: 4.0
 sigma: 1.0
 
 # proposal
-scale_proposal : 3.0
+scale_proposal : 4.0
 loc_proposal : 0
 
 # metrics and plotting
@@ -28,8 +28,8 @@ per_chain: True  # sample to compute metrics comes either from a single chain or
 chunk_len: null
 
 plot_step: 300
-xlims: [-6.2, 6.2]
-ylims: [-6.2, 6.2]
+xlims: [-6.4, 6.4]
+ylims: [-6.4, 6.4]
 steps: [50, 100, 200, 400, 800]
 xscale: log
 d1: 0
@@ -39,6 +39,7 @@ methods:
   i-SIR:
     n_steps : *n_steps
     burn_in : *burn_in
+    take_every: 1
     mcmc_class: CISIR
     params:
       N: 3
@@ -49,6 +50,7 @@ methods:
     mcmc_class: MALA
     n_steps : *n_steps
     burn_in : *burn_in
+    take_every: 3
     params:
       grad_step: 0.2
       adapt_stepsize: False
@@ -59,12 +61,13 @@ methods:
     mcmc_class: Ex2MCMC
     n_steps : *n_steps
     burn_in : *burn_in
+    take_every: 1
     params:
       N: 3
       grad_step: 0.2
       adapt_stepsize: False
       corr_coef: 0.
       bernoulli_prob_corr: 0.
-      mala_steps: 1
+      mala_steps: 3
     color : "tab:red"
     batch_size: *batch_size

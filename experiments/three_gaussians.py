@@ -36,10 +36,11 @@ def define_target(
     device="cpu",
     n_pts=10000
 ):
-    if dim != 2:
-        raise NotImplementedError
-
+    # if dim != 2:
+    #     raise NotImplementedError
     mu = a*np.array([[0.0,1.0],[np.sqrt(3)/2,-0.5],[-np.sqrt(3)/2,-0.5]])
+    if dim != 2:
+        mu = np.concatenate([mu, np.zeros((3, dim - 2))], 1)
 
     target_args = edict()
     target_args.device = device
@@ -77,9 +78,9 @@ def compute_tv(logp, logq, xlims, ylims, ax_pts=100):
 
 
 def compute_metrics(sample, target, steps, data, xlims, ylims, ax_pts=100, per_chain=True, chunk_len=1):
-    result = {"forward KL": [], "backward KL": [], "TV": []}
+    result = defaultdict(list)
     for step_id, step in tqdm(enumerate(steps)):
-        loc_result = {"forward KL": [], "backward KL": [], "TV": []}
+        loc_result = defaultdict(list)
         if per_chain:
             for x in sample[:step].transpose(1, 0):
                 kde = scipy.stats.gaussian_kde(torch.unique(x, dim=0).T)
@@ -113,11 +114,21 @@ def compute_metrics(sample, target, steps, data, xlims, ylims, ax_pts=100, per_c
             result["forward KL"].append((f_kl, 0))
             result["backward KL"].append((compute_kl(data, target, logp), 0))
             result["TV"].append((compute_tv(logp, target, xlims, ylims, ax_pts), 0))
+        ess_arr = ESS(
+            acl_spectrum(
+                (sample[:step] - sample[:step].mean(0)[None, ...])
+                .detach()
+                .cpu()
+                .numpy(),
+                n=10
+            ),
+        )
+        result['ESS'].append((ess_arr.mean(), ess_arr.std()))
     return result
     
 
 def plot_metrics(
-    steps, forward_kl, backward_kl, tv, colors=None, savedir=None, xscale=None
+    steps, forward_kl, backward_kl, tv, ess, colors=None, savedir=None, xscale=None
 ):
     SMALL_SIZE = 18  # 8
     MEDIUM_SIZE = 20  # 10
@@ -131,10 +142,11 @@ def plot_metrics(
     plt.rc("legend", fontsize=SMALL_SIZE)  # legend fontsize
     plt.rc("figure", titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
-    fig, axs = plt.subplots(ncols=4, figsize=(20, 4))
+    keys = ["forward KL", "backward KL", "TV", "ESS"]
+    # fig, axs = plt.subplots(ncols=len(keys), figsize=(20, 4))
     figs = []
     axs = []
-    for _ in range(3):
+    for _ in range(len(keys)):
         fig, ax = plt.subplots(ncols=1, figsize=(5, 4))
         figs.append(fig)
         axs.append(ax)
@@ -146,7 +158,7 @@ def plot_metrics(
             axs[ax_id].plot(steps, arr[0], label=method_name, marker="o", color=color)
         else:
             axs[ax_id].plot(steps, arr[0], label=method_name, marker="o")
-        #axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
+        axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
     axs[ax_id].set_xlabel("step")
     axs[ax_id].set_ylabel(r"forward KL") #$\hat{KL}(p || p^*)$")
     axs[ax_id].grid()
@@ -163,7 +175,7 @@ def plot_metrics(
             axs[ax_id].plot(steps, arr[0], label=method_name, marker="o", color=color)
         else:
             axs[ax_id].plot(steps, arr[0], label=method_name, marker="o")
-        #axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
+        axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
     axs[ax_id].set_xlabel("step")
     axs[ax_id].set_ylabel(r"backward KL")
     axs[ax_id].grid()
@@ -180,7 +192,7 @@ def plot_metrics(
             axs[ax_id].plot(steps, arr[0], label=method_name, marker="o", color=color)
         else:
             axs[ax_id].plot(steps, arr[0], label=method_name, marker="o")
-        #axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
+        axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
     axs[ax_id].set_xlabel("step")
     axs[ax_id].set_ylabel(r"$\|p-p^*\|_{TV}$")
     axs[ax_id].grid()
@@ -191,8 +203,25 @@ def plot_metrics(
     axs[ax_id].set_xticklabels(steps[::2])
     ax_id += 1
 
+    for i, (method_name, arr) in enumerate(ess.items()):
+        if colors is not None:
+            color = colors[i]
+            axs[ax_id].plot(steps, arr[0], label=method_name, marker="o", color=color)
+        else:
+            axs[ax_id].plot(steps, arr[0], label=method_name, marker="o")
+        axs[ax_id].fill_between(steps, arr[0] - 1.96 * arr[1], arr[0] + 1.96 * arr[1], alpha=0.2, color=color)
+    axs[ax_id].set_xlabel("step")
+    axs[ax_id].set_ylabel(r"ESS")
+    axs[ax_id].grid()
+    axs[ax_id].legend()
+    if xscale:
+        axs[ax_id].set_xscale(xscale)
+    axs[ax_id].set_xticks(steps[::2])
+    axs[ax_id].set_xticklabels(steps[::2])
+    ax_id += 1
+
     for ax, fig, name in zip(
-        axs, figs, ["forward KL", "backward KL", "TV"]
+        axs, figs, keys
     ):
         fig.tight_layout()
         fig.savefig(Path(savedir, f"3_gauss_{name}.pdf"))
@@ -216,6 +245,7 @@ def main(config, run=True):
     forward_kl = defaultdict(list)
     backward_kl = defaultdict(list)
     tv = defaultdict(list)
+    ess = defaultdict(list)
 
     samples_collection = []
 
@@ -241,7 +271,7 @@ def main(config, run=True):
         print(f"============ {method_name} =============")
         if info.mcmc_class == 'NUTS':
             s = time.time()
-            sample = sample_nuts(target, proposal, num_samples=info.n_steps - info.burn_in, batch_size=info.batch_size, warmup_steps=info.burn_in)
+            sample = sample_nuts(target, proposal, num_samples=(info.n_steps - info.burn_in)*info.take_every, batch_size=info.batch_size, warmup_steps=info.burn_in*info.take_every)
             e = time.time()
             elapsed = e - s
             sample = torch.as_tensor(sample)
@@ -252,13 +282,14 @@ def main(config, run=True):
             start = proposal.sample([info.batch_size]).float()
 
             s = time.time()
-            out = mcmc(start, target, proposal, n_steps=info.n_steps)
+            out = mcmc(start, target, proposal, n_steps=info.n_steps*info.take_every)
             e = time.time()
             elapsed = e - s
             if isinstance(out, tuple):
                 sample = out[0]
             else:
                 sample = out
+        sample = sample[::info.take_every]
 
         trunc_chain_len = info.n_steps - info.burn_in
         if trunc_chain_len is not None:
@@ -283,6 +314,7 @@ def main(config, run=True):
         forward_kl[method_name] = np.array(local_result["forward KL"]).T
         backward_kl[method_name] = np.array(local_result["backward KL"]).T
         tv[method_name] = np.array(local_result["TV"]).T
+        ess[method_name] = np.array(local_result["ESS"]).T
 
         samples_collection.append(sample)
 
@@ -359,6 +391,7 @@ def main(config, run=True):
             forward_kl,
             backward_kl,
             tv,
+            ess,
             colors=colors,
             savedir=Path(config.figpath),
             xscale=config.xscale
