@@ -462,7 +462,7 @@ class FlowMCMC:
         nll = -self.target(out).mean().item()
 
         if do_step:
-            loss_est, loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
+            loss = self.loss(out, acc_rate=acc_rate, alpha=alpha)
 
             if (
                 len(self.loss_hist) > 0
@@ -471,7 +471,7 @@ class FlowMCMC:
                 print("KL wants to jump, terminating learning")
                 return out, nll
 
-            self.loss_hist = self.loss_hist[-500:] + [loss_est.item()]
+            self.loss_hist = self.loss_hist[-500:] + [loss.item()]
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
